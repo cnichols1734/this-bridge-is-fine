@@ -151,7 +151,7 @@ export const COPY = {
   driveWorst: "Worst on this drive",
   driveFollow: "Follow",
   locate: "My location",
-  locationDenied: "Location is off. Using the map center.",
+  locationDenied: "Location is off for this site. Enable it in Safari or Settings.",
   locationPreciseOff: "Precise location is unavailable.",
   driveLocating: "Finding your location.",
   approachDismiss: "Dismiss",

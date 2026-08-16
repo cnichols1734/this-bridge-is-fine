@@ -1,9 +1,16 @@
-/** Fresh GPS. No cached cell/wifi reading. Precise vs Approximate is an OS grant. */
+/** Watch for a new GPS lock. A recent cached reading is requested separately. */
 
 export const PRECISE_GEO = {
   enableHighAccuracy: true,
   maximumAge: 0,
-  timeout: 12000,
+  timeout: 30000,
+};
+
+/** Safari will return a close cell/wifi reading if we allow a recent cache. */
+export const FIRST_GEO = {
+  enableHighAccuracy: true,
+  maximumAge: 60000,
+  timeout: 20000,
 };
 
 /** Tens of meters. A first callback of a few hundred meters is typical cell/wifi. */
@@ -12,7 +19,7 @@ export const PRECISE_ACCURACY_M = 80;
 /** Cell/wifi and iOS Approximate are typically at least this. */
 export const COARSE_ACCURACY_M = 100;
 
-export const PRECISE_WAIT_MS = 8000;
+export const PRECISE_WAIT_MS = 20000;
 
 export function readFix(pos) {
   return {
@@ -58,6 +65,32 @@ function unavailableError() {
 }
 
 /**
+ * Start geolocation in this turn. Safari iPhone drops the user-gesture if
+ * watchPosition / getCurrentPosition run after an await or then().
+ * A recent cached reading is requested first so the map can fly immediately;
+ * the watch stays on for a GPS lock.
+ */
+export function startPreciseWatch(onFix, onError, options = {}) {
+  const geo = geoHost(options.geolocation);
+  if (!geo?.watchPosition) {
+    onError?.(unavailableError());
+    return () => {};
+  }
+  let last = null;
+  const handle = (pos) => {
+    const fix = readFix(pos);
+    if (!shouldAcceptFix(fix, last)) return;
+    last = fix;
+    onFix(fix);
+  };
+  if (typeof geo.getCurrentPosition === "function") {
+    geo.getCurrentPosition(handle, () => {}, FIRST_GEO);
+  }
+  const id = geo.watchPosition(handle, onError, PRECISE_GEO);
+  return () => geo.clearWatch(id);
+}
+
+/**
  * Use the first reading immediately (often cell/wifi), keep watching,
  * and snap when GPS locks. Reject only when there is no fix at all.
  */
@@ -69,15 +102,9 @@ export function waitForPreciseFix({
   onFix,
 } = {}) {
   return new Promise((resolve, reject) => {
-    const geo = geoHost(geolocation);
-    if (!geo?.watchPosition) {
-      reject(unavailableError());
-      return;
-    }
     let best = null;
     let settled = false;
     let timer = 0;
-    let stop = () => {};
 
     const finish = (result) => {
       if (settled) return;
@@ -95,10 +122,8 @@ export function waitForPreciseFix({
       reject(err);
     };
 
-    const id = geo.watchPosition(
-      (pos) => {
-        const fix = readFix(pos);
-        if (!shouldAcceptFix(fix, best)) return;
+    const stop = startPreciseWatch(
+      (fix) => {
         best = fix;
         onFix?.(fix);
         if (isPreciseFix(best)) {
@@ -108,9 +133,8 @@ export function waitForPreciseFix({
       (err) => {
         if (isPermissionDenied(err)) fail(err);
       },
-      PRECISE_GEO
+      { geolocation }
     );
-    stop = () => geo.clearWatch(id);
 
     timer = setTimer(() => {
       if (best) {
@@ -133,23 +157,7 @@ export function getPrecisePosition(options) {
 }
 
 export function watchPrecisePosition(onFix, onError, options = {}) {
-  const geo = geoHost(options.geolocation);
-  if (!geo?.watchPosition) {
-    onError?.(unavailableError());
-    return () => {};
-  }
-  let last = null;
-  const id = geo.watchPosition(
-    (pos) => {
-      const fix = readFix(pos);
-      if (!shouldAcceptFix(fix, last)) return;
-      last = fix;
-      onFix(fix);
-    },
-    onError,
-    PRECISE_GEO
-  );
-  return () => geo.clearWatch(id);
+  return startPreciseWatch(onFix, onError, options);
 }
 
 export function isPermissionDenied(err) {

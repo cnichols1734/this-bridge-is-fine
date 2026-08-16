@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   COARSE_ACCURACY_M,
+  FIRST_GEO,
   PRECISE_ACCURACY_M,
   PRECISE_GEO,
   getPrecisePosition,
   isCoarseFix,
   isPreciseFix,
   shouldAcceptFix,
+  startPreciseWatch,
   waitForPreciseFix,
   watchPrecisePosition,
 } from "./geo.js";
@@ -29,7 +31,16 @@ function mockGeo() {
   let cb = null;
   const geo = {
     opts: null,
+    firstOpts: null,
+    currentCalls: 0,
+    watchCalls: 0,
+    getCurrentPosition(success, error, opts) {
+      geo.currentCalls += 1;
+      geo.firstOpts = opts;
+      cb = { success, error };
+    },
     watchPosition(success, error, opts) {
+      geo.watchCalls += 1;
       geo.opts = opts;
       cb = { success, error };
       return 1;
@@ -47,9 +58,24 @@ function mockGeo() {
   return geo;
 }
 
-test("Start a drive requests a fresh fix, not a 4s cache", () => {
+test("the watch asks for a new GPS lock; the first read may be cached", () => {
   assert.equal(PRECISE_GEO.enableHighAccuracy, true);
   assert.equal(PRECISE_GEO.maximumAge, 0);
+  assert.ok(PRECISE_GEO.timeout >= 20000);
+  assert.equal(FIRST_GEO.enableHighAccuracy, true);
+  assert.ok(FIRST_GEO.maximumAge >= 15000);
+});
+
+test("startPreciseWatch calls geolocation in this turn, not after a then", () => {
+  const geo = mockGeo();
+  let returned = false;
+  startPreciseWatch(() => {}, undefined, { geolocation: geo });
+  returned = true;
+  assert.equal(geo.currentCalls, 1);
+  assert.equal(geo.watchCalls, 1);
+  assert.equal(returned, true);
+  assert.equal(geo.firstOpts.maximumAge, FIRST_GEO.maximumAge);
+  assert.equal(geo.opts.maximumAge, 0);
 });
 
 test("hundreds of meters is coarse; tens of meters is GPS", () => {
@@ -78,8 +104,6 @@ test("uses a coarse reading immediately, then snaps to GPS", async () => {
     clearTimer: () => {},
     onFix: (fix) => seen.push(fix.accuracy),
   });
-  assert.equal(geo.opts.maximumAge, 0);
-  assert.equal(geo.opts.enableHighAccuracy, true);
   geo.push({ lat: 29.76, lng: -95.37, accuracy: 400 });
   assert.deepEqual(seen, [400]);
   geo.push({ lat: 29.761, lng: -95.371, accuracy: 16 });
@@ -111,8 +135,10 @@ test("a coarse-only timeout is still a usable fix, not a failure", async () => {
   assert.equal(result.fix.accuracy, 420);
   const fix = await getPrecisePosition({
     geolocation: {
-      watchPosition(success) {
+      getCurrentPosition(success) {
         success(coords({ accuracy: 420 }));
+      },
+      watchPosition() {
         return 1;
       },
       clearWatch() {},
