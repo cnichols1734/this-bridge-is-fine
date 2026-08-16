@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 const DETENTS = ["peek", "half", "full"];
 
@@ -9,10 +9,10 @@ function viewportH() {
 export function detentHeight(detent) {
   const h = viewportH();
   const landscape = window.innerWidth > h && h <= 500;
-  if (detent === "full") return Math.round(h * (landscape ? 0.88 : 0.92));
-  if (detent === "half") return Math.round(h * (landscape ? 0.42 : 0.5));
-  if (landscape) return Math.min(120, Math.round(h * 0.3));
-  return Math.min(178, Math.round(h * 0.24));
+  if (detent === "full") return Math.round(h * (landscape ? 0.86 : 0.92));
+  if (detent === "half") return Math.round(h * (landscape ? 0.5 : 0.56));
+  if (landscape) return Math.min(108, Math.round(h * 0.28));
+  return Math.min(168, Math.round(h * 0.22));
 }
 
 function nearestDetent(height, dismissible) {
@@ -34,16 +34,20 @@ export default function Sheet({
   const drag = useRef(null);
   const height = dragH ?? detentHeight(detent);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.style.setProperty("--sheet-h", `${height}px`);
   }, [height]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onResize = () => {
       if (!drag.current) setDragH(null);
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
   }, []);
 
   const snap = (next) => {

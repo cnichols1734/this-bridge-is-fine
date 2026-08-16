@@ -241,5 +241,5 @@ export default function MapView({
     }
   }, [selectedId, visibleConditions]);
 
-  return <div ref={root} className="map" />;
+  return <div ref={root} className={`map map-${basemap}`} />;
 }

@@ -10,9 +10,8 @@
   --good: #8e8e93;
   --unknown: #c7c7cc;
   --ring: #1d1d1f;
-  --shadow: rgb(0 0 0 / 0.08);
   --sheet: #ffffff;
-  --sheet-h: 178px;
+  --sheet-h: 168px;
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", system-ui, sans-serif;
   --font-mark: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
@@ -348,9 +347,23 @@ button {
 
 .maplibregl-ctrl-group {
   border: 1px solid var(--line);
+  border-radius: 0;
   box-shadow: none;
-  background: var(--well);
+  background: var(--bg);
   overflow: hidden;
+}
+
+.maplibregl-ctrl-attrib {
+  background: var(--bg) !important;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--mute);
+}
+
+.map-satellite .maplibregl-ctrl-group,
+.map-satellite .maplibregl-ctrl-attrib {
+  background: var(--bg) !important;
 }
 
 .maplibregl-ctrl button {
@@ -372,19 +385,16 @@ button {
 .basemap,
 .legend {
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  background: rgb(255 255 255 / 0.78);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  gap: 0;
+  padding: 0;
+  background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
 }
 
 .basemap button {
   height: 32px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: 0;
   font-size: 0.8125rem;
   font-weight: 510;
   letter-spacing: -0.01em;
@@ -392,12 +402,17 @@ button {
   transition: background var(--t) var(--ease), color var(--t) var(--ease);
 }
 
+.basemap button + button,
+.legend button + button {
+  border-left: 1px solid var(--line);
+}
+
 .basemap button:hover {
   color: var(--ink);
 }
 
 .basemap button.is-on {
-  background: var(--bg);
+  background: var(--well);
   color: var(--ink);
   font-weight: 600;
 }
@@ -408,7 +423,7 @@ button {
   gap: 6px;
   height: 32px;
   padding: 0 11px;
-  border-radius: 6px;
+  border-radius: 0;
   font-size: 0.8125rem;
   font-weight: 510;
   letter-spacing: -0.01em;
@@ -424,7 +439,7 @@ button {
 .legend button.is-on {
   opacity: 1;
   color: var(--ink);
-  background: var(--bg);
+  background: var(--well);
 }
 
 .legend i {
@@ -464,7 +479,7 @@ button {
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
-  background: var(--well);
+  background: var(--bg);
   border: 1px solid var(--line);
   padding: 8px 12px;
   font-size: 0.8125rem;
@@ -570,7 +585,7 @@ button {
   flex: 0 0 30px;
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--well);
   color: var(--mute);
   font-size: 22px;
@@ -678,6 +693,7 @@ button {
   font-size: 0.6875rem;
   font-weight: 510;
   color: var(--mute);
+  white-space: nowrap;
 }
 
 .rating.is-poor .rating-word {
@@ -729,7 +745,7 @@ button {
   width: 100%;
   height: 36px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--well);
   padding: 0 36px 0 12px;
   outline: none;
@@ -755,8 +771,8 @@ button {
   transform: translateY(-50%);
   width: 22px;
   height: 22px;
-  border-radius: 50%;
-  background: #d2d2d7;
+  border-radius: 0;
+  background: var(--line);
   color: #fff;
   font-size: 16px;
   line-height: 20px;
@@ -780,17 +796,19 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   z-index: 6;
   margin: 0;
-  padding: 4px 0;
+  padding: 0;
   list-style: none;
   background: var(--bg);
-  border: 1px solid rgb(0 0 0 / 0.08);
-  border-radius: 12px;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 0.12);
+  border: 1px solid var(--line);
   max-height: 280px;
   overflow: auto;
+}
+
+.search-hits li + li {
+  border-top: 1px solid var(--line);
 }
 
 .search-hits button {
@@ -835,19 +853,17 @@ button {
   z-index: 4;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 0.82);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-radius: 0;
+  background: var(--bg);
   border: 1px solid var(--line);
   box-shadow: none;
   display: grid;
   place-items: center;
-  transition: transform 140ms var(--ease), background var(--t) var(--ease);
+  transition: background var(--t) var(--ease);
 }
 
 .recenter:active {
-  transform: scale(0.92);
+  background: var(--well);
 }
 
 .recenter svg {
@@ -879,8 +895,6 @@ button {
     overflow: auto;
     background: var(--bg);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.08);
   }
 
   .map-popup .detail {
@@ -889,6 +903,28 @@ button {
 
   .map-popup .concern-word {
     font-size: 1.5rem;
+  }
+
+  .map-popup .rating {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 4px 10px;
+  }
+
+  .map-popup .rating-name {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .map-popup .rating-n {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .map-popup .rating-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }
 
@@ -942,17 +978,14 @@ button {
     height: 44px;
     /* 16px keeps iOS from zooming the viewport on focus */
     font-size: 16px;
-    border-radius: 10px;
-    background: rgb(255 255 255 / 0.86);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-radius: 0;
+    background: var(--bg);
     border: 1px solid var(--line);
   }
 
   .search-hits {
-    border-radius: 10px;
     border: 1px solid var(--line);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.1);
+    box-shadow: none;
   }
 
   .app.sheet-peek .recenter {
@@ -996,7 +1029,7 @@ button {
 
   .legend button:active,
   .basemap button:active {
-    transform: scale(0.96);
+    background: var(--well);
   }
 
   .maplibregl-ctrl-bottom-right {
@@ -1020,9 +1053,9 @@ button {
     z-index: 8;
     background: var(--sheet);
     border: 0;
-    border-radius: 12px 12px 0 0;
+    border-radius: 10px 10px 0 0;
     box-shadow: 0 -1px 0 var(--line);
-    transition: height var(--t) var(--ease);
+    transition: height 200ms var(--ease);
     padding-bottom: env(safe-area-inset-bottom);
   }
 
@@ -1037,16 +1070,16 @@ button {
 
   .sheet-handle {
     flex: 0 0 auto;
-    padding: 6px 0 2px;
+    padding: 8px 0 2px;
     cursor: grab;
   }
 
   .grab {
     width: 36px;
-    height: 5px;
-    border-radius: 100px;
-    background: #c7c7cc;
-    margin: 4px auto 6px;
+    height: 4px;
+    border-radius: 0;
+    background: var(--line-strong);
+    margin: 2px auto 8px;
   }
 
   .sheet-close {
@@ -1057,7 +1090,7 @@ button {
   }
 
   .sheet-close:active {
-    transform: scale(0.92);
+    background: var(--line);
   }
 
   .place-title {
@@ -1083,31 +1116,49 @@ button {
   }
 
   .sheet-pulse {
-    padding: 4px 20px 12px;
+    padding: 2px 20px 10px;
     cursor: pointer;
   }
 
   .sheet .section-head {
-    padding: 2px 20px 8px;
+    padding: 4px 20px 6px;
   }
 
   .sheet .row {
-    padding-left: 20px;
-    padding-right: 20px;
+    padding: 12px 20px;
+  }
+
+  .sheet .empty {
+    padding: 12px 20px 20px;
+    font-size: 0.8125rem;
   }
 
   .sheet-pulse .pulse-number {
-    font-size: 1.75rem;
+    font-size: 1.625rem;
+  }
+
+  .sheet-pulse .pulse-copy {
+    margin-top: 6px;
+    font-size: 0.75rem;
+  }
+
+  .sheet.peek .section-head {
+    display: none;
   }
 
   .sheet .detail {
-    padding: 4px 20px 12px;
+    padding: 2px 20px 16px;
+  }
+
+  .sheet.full .detail,
+  .sheet.half .detail {
+    padding-bottom: 24px;
   }
 
   .sheet-legal {
     display: block;
     margin: 0;
-    padding: 0 20px 16px;
+    padding: 4px 20px 12px;
     font-size: 0.6875rem;
     color: var(--mute);
     line-height: 1.4;
@@ -1119,16 +1170,19 @@ button {
   }
 }
 
-@media (max-width: 900px) and (max-width: 360px) {
+/* 375 portrait is first-class. Long NBI words (Satisfactory, Imminent failure)
+   do not fit the 3-column rating row below ~430px. */
+@media (max-width: 480px) {
   .rating {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
-    gap: 4px 8px;
+    gap: 4px 10px;
   }
 
   .rating-name {
     grid-column: 1;
     grid-row: 1;
+    min-width: 0;
   }
 
   .rating-n {
@@ -1176,6 +1230,27 @@ button {
 
   .sheet-pulse .pulse-number {
     font-size: 1.375rem;
+  }
+
+  .sheet.peek .list,
+  .sheet.peek .empty {
+    display: none;
+  }
+
+  .sheet.peek .sheet-pulse {
+    padding-bottom: 4px;
+  }
+
+  .sheet .detail-title,
+  .sheet .facts,
+  .sheet.half .ratings,
+  .sheet.half .file-id,
+  .sheet.half .sheet-legal {
+    display: none;
+  }
+
+  .sheet.full .ratings {
+    margin-top: 14px;
   }
 }
 
