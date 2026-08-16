@@ -184,9 +184,11 @@ def _latest_ingest(db: Session) -> IngestRun | None:
 
 
 def _active_ingest(db: Session) -> IngestRun | None:
+    # Finished error rows are history. Showing them as active made a
+    # deadlock look like a live ingest long after Postgres aborted it.
     return (
         db.query(IngestRun)
-        .filter(IngestRun.status.in_(("running", "error")))
+        .filter(IngestRun.status == "running")
         .order_by(IngestRun.started_at.desc())
         .first()
     )
