@@ -15,7 +15,11 @@ class Config:
         "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/"
         "NTAD_National_Bridge_Inventory/FeatureServer/0/query",
     )
+    # City scale: mixed G/F/P, unease-ordered. Below this, Poor is filled first.
     MIN_MAP_ZOOM = 8
+    # Continental / US scale: Poor only, capped. Between this and MIN_MAP_ZOOM,
+    # Poor first, then highest-unease others if the cap has room.
+    CONTINENTAL_MAP_ZOOM = 5
     MAP_FEATURE_CAP = 2500
     DEFAULT_NEARBY_KM = 12
     DEFAULT_WORST_KM = 25
