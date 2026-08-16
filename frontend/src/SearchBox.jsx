@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { searchPlaces } from "./api.js";
+import { shouldFetchHits } from "./searchQuery.js";
 
 export default function SearchBox({
   onPick,
@@ -18,6 +19,8 @@ export default function SearchBox({
   const [hits, setHits] = useState([]);
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
+  const pickedQuery = useRef(null);
+  const fetchGen = useRef(0);
 
   const setHitsOpen = (next) => {
     if (openRef.current === next) return;
@@ -31,24 +34,37 @@ export default function SearchBox({
 
   useEffect(() => {
     const query = q.trim();
-    if (query.length < 2) {
-      setHits([]);
-      setHitsOpen(false);
+    if (!shouldFetchHits(query, pickedQuery.current)) {
+      if (query.length < 2) {
+        pickedQuery.current = null;
+        setHits([]);
+        setHitsOpen(false);
+      }
       return undefined;
     }
+    const gen = fetchGen.current;
     const timer = setTimeout(() => {
+      if (!shouldFetchHits(query, pickedQuery.current) || gen !== fetchGen.current) {
+        return;
+      }
       setBusy(true);
       searchPlaces(query, near)
         .then((results) => {
+          if (gen !== fetchGen.current || !shouldFetchHits(query, pickedQuery.current)) {
+            return;
+          }
           setHits(results);
           setActive(0);
           setHitsOpen(results.length > 0);
         })
         .catch(() => {
+          if (gen !== fetchGen.current) return;
           setHits([]);
           setHitsOpen(false);
         })
-        .finally(() => setBusy(false));
+        .finally(() => {
+          if (gen === fetchGen.current) setBusy(false);
+        });
     }, 320);
     return () => clearTimeout(timer);
   }, [q, near]);
@@ -71,8 +87,12 @@ export default function SearchBox({
 
   const choose = (hit) => {
     if (!hit) return;
+    fetchGen.current += 1;
+    pickedQuery.current = hit.label.trim();
     setQ(hit.label);
+    setHits([]);
     setHitsOpen(false);
+    setBusy(false);
     onPick(hit);
   };
 
@@ -86,10 +106,14 @@ export default function SearchBox({
         placeholder={placeholder}
         aria-label={label}
         value={q}
-        onChange={(event) => setQ(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (next.trim() !== pickedQuery.current) pickedQuery.current = null;
+          setQ(next);
+        }}
         onFocus={() => {
           onFocus?.();
-          if (hits.length) setHitsOpen(true);
+          if (hits.length && shouldFetchHits(q, pickedQuery.current)) setHitsOpen(true);
         }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
@@ -116,6 +140,8 @@ export default function SearchBox({
           className="search-clear"
           aria-label="Clear search"
           onClick={() => {
+            fetchGen.current += 1;
+            pickedQuery.current = null;
             setQ("");
             setHits([]);
             setHitsOpen(false);

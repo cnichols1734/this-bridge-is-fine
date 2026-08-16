@@ -127,9 +127,29 @@ def test_drive_start_waits_for_a_fresh_precise_fix():
     open_drive = app.split("const openDrive")[1].split("const confirmTrip")[0]
     assert "waitForPreciseFix" in open_drive
     assert "setTripStart(null)" in open_drive
+    assert "onFix" in open_drive
     assert "userLocation" not in open_drive
-    assert "Location is approximate. Using the map center." in fmt
+    assert "Location is approximate. Using the map center." not in fmt
     assert "Finding your location." in fmt
+    assert "shouldFetchHits" in (ROOT / "frontend" / "src" / "SearchBox.jsx").read_text()
+    assert "pickedQuery" in (ROOT / "frontend" / "src" / "SearchBox.jsx").read_text()
+    assert "shouldFetchHits" in (ROOT / "frontend" / "src" / "searchQuery.js").read_text()
+
+
+def test_map_has_an_always_visible_locate_control():
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    nav = (ROOT / "frontend" / "src" / "NavOverlay.jsx").read_text()
+    css = (ROOT / "frontend" / "src" / "index.css").read_text()
+    fmt = (ROOT / "frontend" / "src" / "format.js").read_text()
+    assert "LocateButton" in nav
+    assert "LocateButton" in app
+    assert 'className="recenter"' in app
+    assert "away && userLocation" not in app
+    assert "locate()" in app
+    assert "refreshPrecise(true)" in app
+    assert "My location" in fmt
+    assert ".locate-btn" in css
+    assert "color: #0071e3" not in css.split(".locate-btn")[1][:400]
 
 
 def test_drive_is_a_real_button():

@@ -12,6 +12,25 @@ export function DriveButton({ onClick, className = "" }) {
   );
 }
 
+export function LocateButton({ onClick, className = "", labeled = false, follow = false }) {
+  const label = follow ? COPY.driveFollow : COPY.locate;
+  return (
+    <button
+      className={`locate-btn${labeled ? " is-labeled" : ""}${className ? ` ${className}` : ""}`}
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21" />
+        <circle cx="12" cy="12" r="7.2" fill="none" />
+      </svg>
+      {labeled ? <span>{label}</span> : null}
+    </button>
+  );
+}
+
 export function NavBanner({ banner, note, onExit }) {
   return (
     <div className="nav-banner" role="status">

@@ -5,7 +5,6 @@ import {
   PRECISE_ACCURACY_M,
   PRECISE_GEO,
   getPrecisePosition,
-  isApproximateError,
   isCoarseFix,
   isPreciseFix,
   shouldAcceptFix,
@@ -69,28 +68,31 @@ test("a GPS fix is not replaced by a later cell reading", () => {
   assert.equal(shouldAcceptFix(gps, cell), true);
 });
 
-test("waits through a coarse first callback for a GPS fix", async () => {
+test("uses a coarse reading immediately, then snaps to GPS", async () => {
   const geo = mockGeo();
+  const seen = [];
   const pending = waitForPreciseFix({
     geolocation: geo,
     watchMs: 5000,
     setTimer: () => 1,
     clearTimer: () => {},
+    onFix: (fix) => seen.push(fix.accuracy),
   });
   assert.equal(geo.opts.maximumAge, 0);
   assert.equal(geo.opts.enableHighAccuracy, true);
   geo.push({ lat: 29.76, lng: -95.37, accuracy: 400 });
+  assert.deepEqual(seen, [400]);
   geo.push({ lat: 29.761, lng: -95.371, accuracy: 16 });
   const result = await pending;
+  assert.deepEqual(seen, [400, 16]);
   assert.equal(result.precise, true);
-  assert.equal(result.approximate, false);
   assert.equal(result.fix.accuracy, 16);
-  assert.ok(Math.abs(result.fix.lat - 29.761) < 1e-9);
 });
 
-test("timeout with only a coarse reading is approximate, not silent GPS", async () => {
+test("a coarse-only timeout is still a usable fix, not a failure", async () => {
   const geo = mockGeo();
   let expire;
+  const seen = [];
   const pending = waitForPreciseFix({
     geolocation: geo,
     watchMs: 8000,
@@ -99,16 +101,17 @@ test("timeout with only a coarse reading is approximate, not silent GPS", async 
       return 1;
     },
     clearTimer: () => {},
+    onFix: (fix) => seen.push(fix.accuracy),
   });
   geo.push({ lat: 29.76, lng: -95.37, accuracy: 420 });
   expire();
   const result = await pending;
+  assert.deepEqual(seen, [420]);
   assert.equal(result.precise, false);
-  assert.equal(result.approximate, true);
   assert.equal(result.fix.accuracy, 420);
-  await assert.rejects(() => getPrecisePosition({
+  const fix = await getPrecisePosition({
     geolocation: {
-      watchPosition(success, error, opts) {
+      watchPosition(success) {
         success(coords({ accuracy: 420 }));
         return 1;
       },
@@ -119,17 +122,18 @@ test("timeout with only a coarse reading is approximate, not silent GPS", async 
       return 1;
     },
     clearTimer: () => {},
-  }), isApproximateError);
+  });
+  assert.equal(fix.accuracy, 420);
 });
 
-test("watch does not emit the coarse first callback", () => {
+test("watch emits coarse, then GPS, and ignores a later cell reading", () => {
   const geo = mockGeo();
   const seen = [];
   watchPrecisePosition((fix) => seen.push(fix.accuracy), undefined, { geolocation: geo });
   geo.push({ accuracy: 380 });
-  assert.deepEqual(seen, []);
+  assert.deepEqual(seen, [380]);
   geo.push({ accuracy: 20 });
-  assert.deepEqual(seen, [20]);
+  assert.deepEqual(seen, [380, 20]);
   geo.push({ accuracy: 450 });
-  assert.deepEqual(seen, [20]);
+  assert.deepEqual(seen, [380, 20]);
 });

@@ -58,8 +58,8 @@ function unavailableError() {
 }
 
 /**
- * Watch until accuracy is GPS-like, or a short timeout.
- * Does not resolve on the first coarse getCurrentPosition / watch callback.
+ * Use the first reading immediately (often cell/wifi), keep watching,
+ * and snap when GPS locks. Reject only when there is no fix at all.
  */
 export function waitForPreciseFix({
   geolocation,
@@ -98,10 +98,9 @@ export function waitForPreciseFix({
     const id = geo.watchPosition(
       (pos) => {
         const fix = readFix(pos);
-        if (shouldAcceptFix(fix, best)) {
-          best = fix;
-          if (isPreciseFix(fix)) onFix?.(fix);
-        }
+        if (!shouldAcceptFix(fix, best)) return;
+        best = fix;
+        onFix?.(fix);
         if (isPreciseFix(best)) {
           finish({ fix: best, precise: true, approximate: false });
         }
@@ -130,15 +129,7 @@ export function waitForPreciseFix({
 }
 
 export function getPrecisePosition(options) {
-  return waitForPreciseFix(options).then((result) => {
-    if (!result.precise) {
-      const err = new Error("approximate");
-      err.code = "APPROXIMATE";
-      err.fix = result.fix;
-      throw err;
-    }
-    return result.fix;
-  });
+  return waitForPreciseFix(options).then((result) => result.fix);
 }
 
 export function watchPrecisePosition(onFix, onError, options = {}) {
@@ -151,10 +142,6 @@ export function watchPrecisePosition(onFix, onError, options = {}) {
   const id = geo.watchPosition(
     (pos) => {
       const fix = readFix(pos);
-      if (isCoarseFix(fix) && !isPreciseFix(last)) {
-        if (shouldAcceptFix(fix, last)) last = fix;
-        return;
-      }
       if (!shouldAcceptFix(fix, last)) return;
       last = fix;
       onFix(fix);
@@ -167,8 +154,4 @@ export function watchPrecisePosition(onFix, onError, options = {}) {
 
 export function isPermissionDenied(err) {
   return err?.code === 1 || err?.code === err?.PERMISSION_DENIED;
-}
-
-export function isApproximateError(err) {
-  return err?.code === "APPROXIMATE";
 }
