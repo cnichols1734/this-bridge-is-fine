@@ -13,7 +13,7 @@ import {
   waitForPreciseFix,
   watchPrecisePosition,
 } from "./geo.js";
-import { ApproachCard, DriveButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
+import { ApproachCard, DriveButton, LocateButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
 import {
   CHICAGO,
   CONDITION_FILTERS,
@@ -763,9 +763,7 @@ export default function App() {
                 onFocus={() => refreshPrecise()}
               />
               <div className="brand-actions">
-                <button className="locate" type="button" onClick={locate}>
-                  Use my location
-                </button>
+                <LocateButton labeled onClick={locate} />
                 <DriveButton onClick={openDrive} />
               </div>
             </>
@@ -887,11 +885,10 @@ export default function App() {
             }
           />
         ) : null}
-        {(away && userLocation && !navigating) || (navigating && !followOn) ? (
-          <button
-            type="button"
+        {!navigating || !followOn ? (
+          <LocateButton
             className="recenter"
-            aria-label={navigating ? COPY.driveFollow : "Recenter on my location"}
+            follow={navigating}
             onClick={() => {
               if (navigating) {
                 refreshPrecise(true).then((fix) => {
@@ -900,15 +897,9 @@ export default function App() {
                 });
                 return;
               }
-              flyHome(userLocation);
+              locate();
             }}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="3.2" />
-              <path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21" />
-              <circle cx="12" cy="12" r="7.2" fill="none" />
-            </svg>
-          </button>
+          />
         ) : null}
         {detail && selectedId ? (
           <div className="map-popup" role="dialog" aria-label="Bridge file">

@@ -150,6 +150,7 @@ export const COPY = {
   driveEmpty: "No structures on this drive.",
   driveWorst: "Worst on this drive",
   driveFollow: "Follow",
+  locate: "My location",
   locationDenied: "Location is off. Using the map center.",
   locationPreciseOff: "Precise location is unavailable.",
   locationApproximate: "Location is approximate. Using the map center.",

@@ -134,17 +134,51 @@ button {
   max-width: 28ch;
 }
 
-.locate {
-  align-self: start;
-  font-size: 0.8125rem;
-  font-weight: 510;
-  letter-spacing: -0.01em;
-  padding: 4px 0;
-  color: #0071e3;
+.locate-btn {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
 }
 
-.locate:hover {
-  color: #0077ed;
+.locate-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.locate-btn:hover,
+.locate-btn:active {
+  background: var(--well);
+}
+
+.locate-btn.is-labeled {
+  width: auto;
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: var(--well);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.locate-btn.is-labeled svg {
+  width: 18px;
+  height: 18px;
+}
+
+.locate-btn.is-labeled:hover {
+  background: var(--line);
 }
 
 .brand-actions {
@@ -443,7 +477,7 @@ button {
 
 .nav-exit:focus-visible,
 .drive-btn:focus-visible,
-.locate:focus-visible,
+.locate-btn:focus-visible,
 .trip-drop:focus-visible,
 .trip-clear:focus-visible,
 .trip-back:focus-visible,
@@ -1149,35 +1183,9 @@ button {
 
 .recenter {
   position: absolute;
-  top: 92px;
+  top: 12px;
   right: 12px;
   z-index: 4;
-  width: 44px;
-  height: 44px;
-  border-radius: 0;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  box-shadow: none;
-  display: grid;
-  place-items: center;
-  transition: background var(--t) var(--ease);
-}
-
-.recenter:active {
-  background: var(--well);
-}
-
-.recenter svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.7;
-  stroke-linecap: round;
-}
-
-.recenter:hover {
-  background: var(--well);
 }
 
 .map-popup {
