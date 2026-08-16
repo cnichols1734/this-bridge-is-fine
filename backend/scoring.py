@@ -13,6 +13,7 @@ from backend.lookups import (
     is_fracture_critical,
     is_freeway,
     is_scour_critical,
+    official_condition_band,
     rating_int,
     status_label,
     structure_phrase,
@@ -277,7 +278,9 @@ def derive(record: dict[str, Any], today: date | None = None) -> dict[str, Any]:
     age = (today.year - year_built) if year_built and year_built > 1800 else None
     derived = {
         "lowest_rating": lowest,
-        "bridge_condition": (record.get("bridge_condition") or "").upper() or None,
+        "bridge_condition": official_condition_band(
+            lowest, record.get("bridge_condition")
+        ),
         "year_built": year_built,
         "year_reconstructed": year_rebuilt,
         "age_years": age,
