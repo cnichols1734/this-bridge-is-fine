@@ -8,8 +8,10 @@ function viewportH() {
 
 export function detentHeight(detent) {
   const h = viewportH();
-  if (detent === "full") return Math.round(h * 0.92);
-  if (detent === "half") return Math.round(h * 0.5);
+  const landscape = window.innerWidth > h && h <= 500;
+  if (detent === "full") return Math.round(h * (landscape ? 0.88 : 0.92));
+  if (detent === "half") return Math.round(h * (landscape ? 0.42 : 0.5));
+  if (landscape) return Math.min(120, Math.round(h * 0.3));
   return Math.min(178, Math.round(h * 0.24));
 }
 
@@ -31,6 +33,10 @@ export default function Sheet({
   const [dragH, setDragH] = useState(null);
   const drag = useRef(null);
   const height = dragH ?? detentHeight(detent);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--sheet-h", `${height}px`);
+  }, [height]);
 
   useEffect(() => {
     const onResize = () => {
