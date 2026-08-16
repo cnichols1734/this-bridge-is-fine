@@ -8,10 +8,18 @@ import {
   RATING_NOTE,
   conditionClass,
   conditionVisible,
+  driveBridgesForMap,
+  driveBridgesGeojson,
   formatDriveDistance,
   formatDriveTime,
   formatEta,
+  formatManeuver,
+  mapDotsCollection,
+  navBanner,
   nextDropSlot,
+  pickApproachingBridge,
+  pickWorstOnDrive,
+  pointAlongRoute,
   officialCondition,
   ratingBand,
   ratingClass,
@@ -105,10 +113,14 @@ test("user-facing strings stay dry and civic", () => {
   assert.match(COPY.poorDefinition, /scored 4 or below/);
   assert.match(COPY.rankNote, /Not an official grade/);
   assert.equal(COPY.driveUse, "Use this drive");
+  assert.equal(COPY.driveAction, "Start a drive");
   assert.equal(COPY.driveBack, "Back");
+  assert.equal(COPY.driveWorst, "Worst on this drive");
   assert.equal(COPY.driveNone, "No driving route for these points.");
   assert.equal(COPY.driveDown, "Routing is unavailable.");
+  assert.equal(COPY.locationDenied, "Location is off. Using the map center.");
   assert.doesNotMatch(COPY.drive, /!/);
+  assert.doesNotMatch(COPY.driveAction, /!/);
 });
 
 test("drop points fill the next empty end and do not imply a wipe", () => {
@@ -117,6 +129,192 @@ test("drop points fill the next empty end and do not imply a wipe", () => {
   assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, null), "end");
   assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, "start"), "start");
   assert.equal(nextDropSlot(null, { label: "B" }, "end"), "end");
+});
+
+test("drive overlay uses only the drive list, including every Poor", () => {
+  const viewport = {
+    type: "FeatureCollection",
+    features: [
+      { properties: { id: "48-HOUSTON" } },
+      { properties: { id: "48-GALVESTON" } },
+    ],
+  };
+  const drive = [
+    {
+      id: "48-POOR-1",
+      lng: -95.37,
+      lat: 29.76,
+      condition: "P",
+      lowest: 4,
+      score: 22,
+      status: "A",
+    },
+    {
+      id: "48-POOR-2",
+      lng: -95.4,
+      lat: 29.8,
+      condition: "P",
+      lowest: 3,
+      score: 18,
+      status: "A",
+    },
+    {
+      id: "48-GOOD",
+      lng: -95.35,
+      lat: 29.72,
+      condition: "G",
+      lowest: 7,
+      score: 80,
+      status: "A",
+    },
+  ];
+
+  assert.equal(driveBridgesForMap({ tripOpen: false }), null);
+  assert.equal(mapDotsCollection(viewport, null), viewport);
+
+  const listed = driveBridgesForMap({
+    route: { type: "LineString", coordinates: [[-95.3, 29.7], [-94.8, 29.3]] },
+    bridges: drive,
+  });
+  assert.deepEqual(
+    listed.map((bridge) => bridge.id),
+    ["48-POOR-1", "48-POOR-2", "48-GOOD"]
+  );
+  const overlay = mapDotsCollection(viewport, listed);
+  assert.deepEqual(
+    overlay.features.map((feature) => feature.properties.id),
+    ["48-POOR-1", "48-POOR-2", "48-GOOD"]
+  );
+  assert.equal(overlay.features[0].properties.condition, "P");
+  assert.equal(overlay.features[2].properties.condition, "G");
+  assert.ok(!overlay.features.some((feature) => feature.properties.id === "48-HOUSTON"));
+});
+
+test("empty drive list does not fall back to the viewport spray", () => {
+  const viewport = {
+    type: "FeatureCollection",
+    features: [{ properties: { id: "17-CITY" } }],
+  };
+  const listed = driveBridgesForMap({
+    route: { type: "LineString", coordinates: [[-87.6, 41.8], [-87.7, 42.0]] },
+    bridges: [],
+  });
+  assert.deepEqual(listed, []);
+  assert.deepEqual(mapDotsCollection(viewport, listed), {
+    type: "FeatureCollection",
+    features: [],
+  });
+});
+
+test("leaving Drive returns the viewport collection", () => {
+  const viewport = { type: "FeatureCollection", features: [{ properties: { id: "17-A" } }] };
+  const last = [{ id: "17-DRIVE", lng: -87.6, lat: 41.8, condition: "P" }];
+  assert.deepEqual(
+    driveBridgesForMap({
+      tripOpen: true,
+      lastBridges: last,
+    }),
+    last
+  );
+  assert.equal(
+    driveBridgesForMap({
+      tripOpen: false,
+      lastBridges: last,
+    }),
+    null
+  );
+  assert.equal(mapDotsCollection(viewport, null), viewport);
+});
+
+test("drive geojson keeps official condition codes for existing colors", () => {
+  const geojson = driveBridgesGeojson([
+    { id: "1-P", lng: -87.6, lat: 41.8, condition: "P", status: "A" },
+    { id: "1-F", lng: -87.61, lat: 41.81, condition: "F", status: "A" },
+    { id: "1-G", lng: -87.62, lat: 41.82, condition: "G", status: "A" },
+    { id: "1-BAD", lng: null, lat: 41.8, condition: "P" },
+  ]);
+  assert.deepEqual(
+    geojson.features.map((feature) => feature.properties.condition),
+    ["P", "F", "G"]
+  );
+  assert.equal(CONDITION_COLORS[geojson.features[0].properties.condition], "#b42318");
+  assert.equal(CONDITION_COLORS[geojson.features[1].properties.condition], "#c4a84a");
+  assert.equal(CONDITION_COLORS[geojson.features[2].properties.condition], "#5c7a52");
+});
+
+test("top three worst prefer Poor then lowest score", () => {
+  const worst = pickWorstOnDrive(
+    [
+      { id: "g-ok", condition: "G", score: 90, lowest: 8 },
+      { id: "f-mid", condition: "F", score: 60, lowest: 5 },
+      { id: "p-quiet", condition: "P", score: 80, lowest: 4 },
+      { id: "p-bad", condition: "P", score: 30, lowest: 3 },
+      { id: "g-busy", condition: "G", score: 10, lowest: 7 },
+    ],
+    3
+  );
+  assert.deepEqual(
+    worst.map((bridge) => bridge.id),
+    ["p-bad", "p-quiet", "g-busy"]
+  );
+});
+
+test("maneuver copy stays civic", () => {
+  assert.equal(
+    formatManeuver({ type: "turn", modifier: "right", name: "Lake Shore Drive" }),
+    "Right on Lake Shore Drive"
+  );
+  assert.equal(formatManeuver({ type: "merge", name: "I 90" }), "Merge onto I 90");
+  assert.equal(formatManeuver({ type: "arrive" }), "Arrive");
+  assert.doesNotMatch(formatManeuver({ type: "turn", modifier: "left", name: "Main" }), /!/);
+});
+
+test("nav banner uses the upcoming turn when the current step is almost done", () => {
+  const steps = [
+    { type: "continue", name: "Main Street", distance_m: 100 },
+    { type: "turn", modifier: "left", name: "Oak", distance_m: 400 },
+  ];
+  const banner = navBanner(steps, 0.92, 100);
+  assert.equal(banner.text, "Left on Oak");
+  assert.ok(banner.distance_m < 35);
+});
+
+test("along-route progress is 0 at the start and 1 at the end", () => {
+  const line = [
+    [-87.63, 41.88],
+    [-87.63, 41.89],
+  ];
+  assert.ok(pointAlongRoute(-87.63, 41.88, line) < 0.05);
+  assert.ok(pointAlongRoute(-87.63, 41.89, line) > 0.95);
+});
+
+test("approaching callout prefers Poor and ignores dismissed", () => {
+  const bridges = [
+    { id: "g", condition: "G", along: 0.25, score: 80 },
+    { id: "p", condition: "P", along: 0.22, score: 40 },
+    { id: "f", condition: "F", along: 0.21, score: 50 },
+  ];
+  const hit = pickApproachingBridge({
+    bridges,
+    worstIds: ["p"],
+    along: 0.18,
+    routeM: 2000,
+  });
+  assert.equal(hit.id, "p");
+  const skipped = pickApproachingBridge({
+    bridges,
+    worstIds: ["p"],
+    along: 0.18,
+    routeM: 2000,
+    dismissedIds: new Set(["p"]),
+  });
+  assert.equal(skipped.id, "f");
+  const past = pickApproachingBridge({
+    bridges,
+    along: 0.4,
+    routeM: 2000,
+  });
+  assert.equal(past, null);
 });
 
 test("drive time, distance, and ETA stay precise", () => {

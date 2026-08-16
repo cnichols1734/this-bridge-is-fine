@@ -205,11 +205,15 @@ export default function MapView({
   routePreview = false,
   tripEnds = null,
   pickMode = false,
+  follow = null,
+  followOn = false,
+  userFix = null,
   onReady,
   onMove,
   onSelect,
   onDeselect,
   onPickPoint,
+  onFollowBreak,
 }) {
   const root = useRef(null);
   const mapRef = useRef(null);
@@ -225,10 +229,14 @@ export default function MapView({
   const previewRef = useRef(routePreview);
   const endsRef = useRef(tripEnds);
   const pickRef = useRef(pickMode);
+  const followOnRef = useRef(followOn);
+  const onFollowBreakRef = useRef(onFollowBreak);
+  const puckRef = useRef(null);
   onMoveRef.current = onMove;
   onSelectRef.current = onSelect;
   onDeselectRef.current = onDeselect;
   onPickPointRef.current = onPickPoint;
+  onFollowBreakRef.current = onFollowBreak;
   geojsonRef.current = geojson;
   selectedRef.current = selectedId;
   basemapRef.current = basemap;
@@ -237,6 +245,7 @@ export default function MapView({
   previewRef.current = routePreview;
   endsRef.current = tripEnds;
   pickRef.current = pickMode;
+  followOnRef.current = followOn;
 
   useEffect(() => {
     if (!root.current || mapRef.current) return undefined;
@@ -322,6 +331,9 @@ export default function MapView({
         timer = setTimeout(emit, 220);
       });
       map.on("click", onMapClick);
+      map.on("dragstart", () => {
+        if (followOnRef.current) onFollowBreakRef.current?.();
+      });
       onReady(map);
       emit();
     });
@@ -388,5 +400,58 @@ export default function MapView({
     addRouteOverlay(map, route, tripEnds, routePreview, basemap);
   }, [route, routePreview, tripEnds, basemap]);
 
-  return <div ref={root} className={`map map-${basemap}${pickMode ? " is-pick" : ""}`} />;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    if (!userFix) {
+      puckRef.current?.remove();
+      puckRef.current = null;
+      return undefined;
+    }
+    const heading = Number.isFinite(userFix.heading) ? userFix.heading : 0;
+    if (!puckRef.current) {
+      const el = document.createElement("div");
+      el.className = "user-puck";
+      el.setAttribute("aria-hidden", "true");
+      puckRef.current = new maplibregl.Marker({
+        element: el,
+        rotationAlignment: "map",
+        pitchAlignment: "viewport",
+      })
+        .setLngLat([userFix.lng, userFix.lat])
+        .setRotation(heading)
+        .addTo(map);
+    } else {
+      puckRef.current.setLngLat([userFix.lng, userFix.lat]);
+      puckRef.current.setRotation(heading);
+    }
+    return undefined;
+  }, [userFix]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!followOn || !follow) {
+      if (map.getPitch() > 0.5 || Math.abs(map.getBearing()) > 0.5) {
+        map.easeTo({ pitch: 0, bearing: 0, duration: 220 });
+      }
+      return;
+    }
+    map.easeTo({
+      center: [follow.lng, follow.lat],
+      zoom: Math.max(map.getZoom(), 15.4),
+      bearing: Number.isFinite(follow.heading) ? follow.heading : map.getBearing(),
+      pitch: 48,
+      duration: 260,
+      easing: (t) => 1 - (1 - t) * (1 - t),
+      essential: true,
+    });
+  }, [follow, followOn]);
+
+  return (
+    <div
+      ref={root}
+      className={`map map-${basemap}${pickMode ? " is-pick" : ""}${followOn ? " is-nav" : ""}`}
+    />
+  );
 }

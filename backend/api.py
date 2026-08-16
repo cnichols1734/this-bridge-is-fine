@@ -16,8 +16,11 @@ from backend.models import Bridge, IngestRun, IngestStateProgress
 from backend.route import (
     ROUTE_BRIDGES_SQL,
     RouteError,
+    ensure_included,
     fetch_osrm_route,
+    filter_on_drive,
     parse_lonlat,
+    pick_worst_on_drive,
     route_summary,
     select_route_bridges,
 )
@@ -62,7 +65,11 @@ def _public_score(unease: int | None) -> int:
     return 100 - int(unease or 0)
 
 
-def _list_item(bridge: Bridge, distance_m: float | None = None) -> dict:
+def _list_item(
+    bridge: Bridge,
+    distance_m: float | None = None,
+    along: float | None = None,
+) -> dict:
     item = {
         "id": _bridge_id(bridge),
         "state": bridge.state_code,
@@ -85,6 +92,8 @@ def _list_item(bridge: Bridge, distance_m: float | None = None) -> dict:
     }
     if distance_m is not None:
         item["distance_km"] = round(distance_m / 1000.0, 2)
+    if along is not None:
+        item["along"] = round(float(along), 5)
     return item
 
 
@@ -690,18 +699,33 @@ def create_app() -> Flask:
             matched = _fetch_route_bridges(
                 db, route["geometry"], float(Config.ROUTE_BUFFER_M)
             )
-            bridges = [bridge for bridge, _dist in matched]
-            summary = route_summary(bridges)
-            listed, capped = select_route_bridges(bridges, Config.ROUTE_LIST_CAP)
+            candidates = [bridge for bridge, _dist in matched]
+            on_drive = filter_on_drive(candidates, route.get("roads") or [])
+            summary = route_summary(on_drive)
+            worst_rows = pick_worst_on_drive(on_drive, 3)
+            listed, capped = select_route_bridges(on_drive, Config.ROUTE_LIST_CAP)
+            listed = ensure_included(listed, worst_rows)
             return jsonify(
                 {
-                    "route": route,
+                    "route": {
+                        "geometry": route["geometry"],
+                        "distance_m": route["distance_m"],
+                        "duration_s": route["duration_s"],
+                        "steps": route.get("steps") or [],
+                    },
                     "summary": {
                         **summary,
                         "listed": len(listed),
                         "capped": capped,
                     },
-                    "bridges": [_list_item(bridge) for bridge in listed],
+                    "bridges": [
+                        _list_item(bridge, along=getattr(bridge, "along", None))
+                        for bridge in listed
+                    ],
+                    "worst": [
+                        _list_item(bridge, along=getattr(bridge, "along", None))
+                        for bridge in worst_rows
+                    ],
                 }
             )
         finally:

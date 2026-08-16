@@ -149,19 +149,175 @@ button {
 
 .brand-actions {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
+}
+
+.drive-btn {
+  height: 36px;
+  padding: 0 14px;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.drive-btn:hover {
+  background: #333336;
 }
 
 .map-brand-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
 .map-drive {
   flex: 0 0 auto;
+}
+
+.nav-banner {
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.nav-banner-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.nav-exit {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+  color: #0071e3;
+}
+
+.nav-exit:hover {
+  color: #0077ed;
+}
+
+.nav-banner-copy {
+  min-width: 0;
+  flex: 1;
+  padding-top: 2px;
+}
+
+.nav-turn {
+  font-weight: 600;
+  font-size: 1.0625rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.nav-dist {
+  margin-top: 2px;
+  color: var(--mute);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-note {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+.approach-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 80px;
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.approach-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  text-align: left;
+  padding: 10px 12px;
+}
+
+.approach-title,
+.trip-worst-title {
+  display: block;
+  font-weight: 510;
+  letter-spacing: -0.015em;
+}
+
+.approach-meta,
+.trip-worst-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--mute);
+  font-size: 0.75rem;
+}
+
+.approach-dismiss {
+  width: 44px;
+  color: var(--mute);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.trip-worst {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.trip-worst-label {
+  font-size: 0.6875rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+  color: var(--mute);
+  margin-bottom: 4px;
+}
+
+.trip-worst-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  text-align: left;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  min-height: 36px;
+}
+
+.trip-worst-row.is-poor {
+  background: rgb(180 35 24 / 0.04);
+}
+
+.trip-worst-row.is-on {
+  background: var(--well);
+}
+
+.user-puck {
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  background: var(--ink);
+  border: 2px solid #ffffff;
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
 }
 
 .trip-bar {
@@ -285,6 +441,8 @@ button {
   cursor: crosshair;
 }
 
+.nav-exit:focus-visible,
+.drive-btn:focus-visible,
 .locate:focus-visible,
 .trip-drop:focus-visible,
 .trip-clear:focus-visible,
@@ -1138,6 +1296,20 @@ button {
     right: 12px;
   }
 
+  .app.has-nav .map-search {
+    right: 68px;
+  }
+
+  .approach-card {
+    bottom: calc(var(--sheet-h) + 12px);
+    right: 12px;
+  }
+
+  .drive-btn {
+    height: 44px;
+    padding: 0 16px;
+  }
+
   .app.has-trip .trip-bar {
     gap: 6px;
     padding: 8px 10px 8px;
@@ -1458,20 +1630,37 @@ button {
   }
 
   .sheet .trip-pulse .pulse-number {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     margin-top: 0;
   }
 
   .sheet .trip-pulse .pulse-copy,
   .sheet .trip-status .pulse-copy {
     display: block;
-    margin-top: 4px;
+    margin-top: 2px;
     font-size: 0.75rem;
+    line-height: 1.35;
   }
 
   .sheet .trip-use {
     height: 36px;
     margin-top: 6px;
+    flex-shrink: 0;
+  }
+
+  .sheet .trip-worst {
+    display: flex;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  .sheet .trip-worst-label {
+    display: none;
+  }
+
+  .sheet .trip-worst-row {
+    padding: 5px 0;
+    min-height: 28px;
   }
 
   .sheet.peek .list,
@@ -1479,8 +1668,17 @@ button {
     display: none;
   }
 
+  .sheet.peek .sheet-body {
+    overflow: visible;
+  }
+
+  .sheet.peek .trip-pulse {
+    overflow: visible;
+    padding-bottom: 8px;
+  }
+
   .sheet.peek .sheet-pulse {
-    padding-bottom: 4px;
+    padding-bottom: 8px;
   }
 
   .sheet .detail-title,

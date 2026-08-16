@@ -12,8 +12,8 @@ export function detentHeight(detent, roomy = false) {
   if (detent === "full") return Math.round(h * (landscape ? 0.94 : 0.92));
   if (detent === "half") return Math.round(h * (landscape ? 0.52 : 0.56));
   if (roomy) {
-    if (landscape) return Math.min(188, Math.max(156, Math.round(h * 0.46)));
-    return Math.round(h * 0.25);
+    if (landscape) return Math.min(340, Math.max(292, Math.round(h * 0.84)));
+    return Math.min(340, Math.max(248, Math.round(h * 0.4)));
   }
   if (landscape) return Math.min(96, Math.round(h * 0.26));
   return Math.min(156, Math.round(h * 0.22));
@@ -112,7 +112,7 @@ export default function Sheet({
 
   const startDrag = (event) => {
     if (event.button && event.button !== 0) return;
-    if (event.target.closest(".sheet-close, a, input, .row, .trip-use")) return;
+    if (event.target.closest(".sheet-close, a, input, .row, .trip-use, .trip-worst, .approach-card, .drive-btn")) return;
     if (!event.target.closest(".sheet-handle, .sheet-drag")) return;
     onPointerDown(event);
   };
