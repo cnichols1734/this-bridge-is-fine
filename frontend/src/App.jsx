@@ -5,6 +5,8 @@ import SearchBox from "./SearchBox.jsx";
 import TripBar from "./TripBar.jsx";
 import Sheet, { detentHeight } from "./Sheet.jsx";
 import { fetchBridge, fetchDrive, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
+import { getPrecisePosition, isPermissionDenied, watchPrecisePosition } from "./geo.js";
+import { ApproachCard, DriveButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
 import {
   CHICAGO,
   CONDITION_FILTERS,
@@ -18,10 +20,15 @@ import {
   formatDriveTime,
   formatEta,
   mapDotsCollection,
+  navBanner,
   nextDropSlot,
   officialCondition,
+  pickApproachingBridge,
+  pickWorstOnDrive,
+  pointAlongRoute,
   readConditionFilter,
   readPermalink,
+  routeHeadingAt,
   viewIsAway,
   writeConditionFilter,
   writePermalink,
@@ -84,7 +91,15 @@ function TripFacts({ route, summary }) {
   );
 }
 
-function TripPulse({ payload, confirmed, onConfirm, onOpen }) {
+function TripPulse({
+  payload,
+  confirmed,
+  onConfirm,
+  onOpen,
+  worst,
+  selectedId,
+  onSelect,
+}) {
   if (!payload?.route) return null;
   const { route, summary } = payload;
   return (
@@ -104,6 +119,11 @@ function TripPulse({ payload, confirmed, onConfirm, onOpen }) {
           {COPY.driveUse}
         </button>
       ) : null}
+      <WorstOnDrive
+        bridges={worst}
+        selectedId={selectedId}
+        onSelect={onSelect}
+      />
     </div>
   );
 }
@@ -170,6 +190,11 @@ export default function App() {
   const [dropMode, setDropMode] = useState(false);
   const [dropEditing, setDropEditing] = useState(null);
   const [lastPlace, setLastPlace] = useState(null);
+  const [navigating, setNavigating] = useState(false);
+  const [followOn, setFollowOn] = useState(false);
+  const [navFix, setNavFix] = useState(null);
+  const [navNote, setNavNote] = useState(null);
+  const [dismissedApproach, setDismissedApproach] = useState(() => new Set());
   const mapRef = useRef(null);
   const tripKey = useRef("");
   const typeaheadOpen = useRef(false);
@@ -177,6 +202,8 @@ export default function App() {
   const lastDriveBridges = useRef(null);
   const drivePinsOn = useRef(false);
   const wasDrivePinsOn = useRef(false);
+  const navigatingRef = useRef(false);
+  const lastFixAt = useRef(0);
 
   const toggleCondition = useCallback((code) => {
     setVisibleConditions((current) => {
@@ -214,6 +241,7 @@ export default function App() {
 
   const loadViewport = useCallback(
     async (map) => {
+      if (navigatingRef.current) return;
       rememberView(map);
       if (drivePinsOn.current) return;
       try {
@@ -266,9 +294,14 @@ export default function App() {
     async (id) => {
       setSelectedId(id);
       setSheet("half");
+      if (navigatingRef.current) setFollowOn(false);
       const preview =
         list.find((bridge) => bridge.id === id) ||
-        worst.find((bridge) => bridge.id === id);
+        worst.find((bridge) => bridge.id === id) ||
+        trip?.bridges?.find((bridge) => bridge.id === id) ||
+        tripDraft?.bridges?.find((bridge) => bridge.id === id) ||
+        trip?.worst?.find((bridge) => bridge.id === id) ||
+        tripDraft?.worst?.find((bridge) => bridge.id === id);
       if (preview) setDetail(preview);
       const map = mapRef.current;
       if (map) {
@@ -287,7 +320,7 @@ export default function App() {
         setError(err.message);
       }
     },
-    [padMap, list, worst]
+    [padMap, list, worst, trip, tripDraft]
   );
 
   const flyHome = useCallback((coords) => {
@@ -301,18 +334,38 @@ export default function App() {
     setAway(false);
   }, []);
 
+  const applyFix = useCallback((fix) => {
+    if (!fix) return null;
+    lastFixAt.current = fix.at || Date.now();
+    setUserLocation(fix);
+    return fix;
+  }, []);
+
+  const refreshPrecise = useCallback(
+    (force = false) => {
+      if (!force && Date.now() - lastFixAt.current < 8000 && userLocation) {
+        return Promise.resolve(userLocation);
+      }
+      return getPrecisePosition()
+        .then((fix) => {
+          setNavNote(null);
+          return applyFix(fix);
+        })
+        .catch((err) => {
+          setNavNote(
+            isPermissionDenied(err) ? COPY.locationDenied : COPY.locationPreciseOff
+          );
+          return null;
+        });
+    },
+    [applyFix, userLocation]
+  );
+
   const locate = useCallback(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const next = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-        setUserLocation(next);
-        flyHome(next);
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  }, [flyHome]);
+    refreshPrecise(true).then((fix) => {
+      if (fix) flyHome(fix);
+    });
+  }, [flyHome, refreshPrecise]);
 
   const goToPlace = useCallback((hit) => {
     setLastPlace(hit);
@@ -345,6 +398,12 @@ export default function App() {
 
   const clearTrip = useCallback(() => {
     tripKey.current = "";
+    navigatingRef.current = false;
+    setNavigating(false);
+    setFollowOn(false);
+    setNavFix(null);
+    setNavNote(null);
+    setDismissedApproach(new Set());
     setTripOpen(false);
     setTripStart(null);
     setTripEnd(null);
@@ -374,31 +433,34 @@ export default function App() {
     setDropEditing(null);
     setTripOpen(true);
     setSheet("peek");
-    if (!userLocation && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const next = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-          setUserLocation(next);
-          setTripStart((current) => {
-            if (!current || current.label === COPY.driveCenter) {
-              return { ...next, label: COPY.driveHere };
-            }
-            return current;
-          });
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    }
-  }, [defaultStart, lastPlace, userLocation]);
+    refreshPrecise(true).then((fix) => {
+      if (!fix) return;
+      setTripStart((current) => {
+        if (!current || current.label === COPY.driveCenter) {
+          return { ...fix, label: COPY.driveHere };
+        }
+        return current;
+      });
+    });
+  }, [defaultStart, lastPlace, refreshPrecise]);
 
   const confirmTrip = useCallback(() => {
     if (!tripDraft) return;
     setTrip(tripDraft);
     setDropMode(false);
     setSheet("peek");
-    fitRoute(mapRef.current, tripDraft.route?.geometry, "peek", true);
-  }, [tripDraft]);
+    setDismissedApproach(new Set());
+    navigatingRef.current = true;
+    setNavigating(true);
+    refreshPrecise(true).then((fix) => {
+      if (fix) {
+        setNavFix(fix);
+        setFollowOn(true);
+        return;
+      }
+      setFollowOn(false);
+    });
+  }, [tripDraft, refreshPrecise]);
 
   const pickTripPoint = useCallback((point) => {
     const labeled = {
@@ -417,6 +479,9 @@ export default function App() {
     }
     setTripEnd(labeled);
     setDropMode(false);
+    navigatingRef.current = false;
+    setNavigating(false);
+    setFollowOn(false);
   }, [tripStart, tripEnd, dropEditing]);
 
   useEffect(() => {
@@ -469,6 +534,9 @@ export default function App() {
     setTripError(null);
     setTripDraft(null);
     setTrip(null);
+    navigatingRef.current = false;
+    setNavigating(false);
+    setFollowOn(false);
     fetchDrive(tripStart, tripEnd)
       .then((payload) => {
         if (cancelled) return;
@@ -490,35 +558,33 @@ export default function App() {
     };
   }, [tripOpen, tripStart, tripEnd]);
 
+  useEffect(() => {
+    if (!navigating) return undefined;
+    const stop = watchPrecisePosition(
+      (fix) => {
+        applyFix(fix);
+        setNavFix(fix);
+      },
+      (err) => {
+        setNavNote(
+          isPermissionDenied(err) ? COPY.locationDenied : COPY.locationPreciseOff
+        );
+      }
+    );
+    return stop;
+  }, [navigating, applyFix]);
+
   const onReady = (map) => {
     mapRef.current = map;
     if (permalink.id) padMap("full");
-    if (!permalink.lat && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const next = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-          setUserLocation(next);
-          map.easeTo({
-            center: [next.lng, next.lat],
-            zoom: 11.2,
-            duration: 800,
-          });
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    } else if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({
-            lng: pos.coords.longitude,
-            lat: pos.coords.latitude,
-          });
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    }
+    refreshPrecise(true).then((fix) => {
+      if (!fix || permalink.lat) return;
+      map.easeTo({
+        center: [fix.lng, fix.lat],
+        zoom: 11.2,
+        duration: 800,
+      });
+    });
   };
 
   useEffect(() => {
@@ -540,6 +606,36 @@ export default function App() {
     : COPY.pulseMove;
   const tripPayload = trip || tripDraft;
   const tripList = trip?.bridges || [];
+  const tripWorst = tripPayload
+    ? tripPayload.worst || pickWorstOnDrive(tripPayload.bridges, 3)
+    : [];
+  const routeCoords = trip?.route?.geometry?.coordinates;
+  const routeM = trip?.route?.distance_m || 0;
+  const along = navFix && routeCoords
+    ? pointAlongRoute(navFix.lng, navFix.lat, routeCoords)
+    : 0;
+  const followHeading =
+    navFix && Number.isFinite(navFix.heading) && (navFix.speed || 0) > 1
+      ? navFix.heading
+      : routeCoords
+        ? routeHeadingAt(along, routeCoords)
+        : navFix?.heading;
+  const banner = navigating
+    ? navBanner(trip?.route?.steps, along, routeM)
+    : null;
+  const approach = navigating
+    ? pickApproachingBridge({
+        bridges: trip?.bridges,
+        worstIds: tripWorst.map((bridge) => bridge.id),
+        along,
+        routeM,
+        dismissedIds: dismissedApproach,
+      })
+    : null;
+  const followCamera =
+    followOn && navFix
+      ? { lng: navFix.lng, lat: navFix.lat, heading: followHeading }
+      : null;
   if (!tripOpen) {
     lastDriveBridges.current = null;
   } else if (tripPayload?.route) {
@@ -576,8 +672,14 @@ export default function App() {
       dropping={dropMode}
       busy={tripBusy}
       error={tripError}
-      onFocusStart={() => setDropEditing("start")}
-      onFocusEnd={() => setDropEditing("end")}
+      onFocusStart={() => {
+        setDropEditing("start");
+        refreshPrecise();
+      }}
+      onFocusEnd={() => {
+        setDropEditing("end");
+        refreshPrecise();
+      }}
       onOpenChange={(open) => {
         typeaheadCount.current += open ? 1 : -1;
         if (typeaheadCount.current < 0) typeaheadCount.current = 0;
@@ -588,12 +690,18 @@ export default function App() {
         tripKey.current = "";
         setTrip(null);
         setTripDraft(null);
+        navigatingRef.current = false;
+        setNavigating(false);
+        setFollowOn(false);
       }}
       onPickEnd={(point) => {
         setTripEnd(point);
         tripKey.current = "";
         setTrip(null);
         setTripDraft(null);
+        navigatingRef.current = false;
+        setNavigating(false);
+        setFollowOn(false);
       }}
       onDrop={() => setDropMode((on) => !on)}
       onBack={clearTrip}
@@ -603,7 +711,7 @@ export default function App() {
 
   return (
     <div
-      className={`app sheet-${sheet}${detail ? " has-place" : ""}${tripOpen ? " has-trip" : ""}`}
+      className={`app sheet-${sheet}${detail ? " has-place" : ""}${tripOpen ? " has-trip" : ""}${navigating ? " has-nav" : ""}`}
     >
       <aside className="col col-left">
         <header className="brand">
@@ -613,14 +721,16 @@ export default function App() {
             tripComposer
           ) : (
             <>
-              <SearchBox onPick={goToPlace} near={searchNear} />
+              <SearchBox
+                onPick={goToPlace}
+                near={searchNear}
+                onFocus={() => refreshPrecise()}
+              />
               <div className="brand-actions">
                 <button className="locate" type="button" onClick={locate}>
                   Use my location
                 </button>
-                <button className="locate" type="button" onClick={openDrive}>
-                  {COPY.drive}
-                </button>
+                <DriveButton onClick={openDrive} />
               </div>
             </>
           )}
@@ -629,13 +739,23 @@ export default function App() {
         {tripError ? <div className="error">{tripError}</div> : null}
         {hint && !tripOpen ? <div className="hint">{hint}</div> : null}
         {trip && tripPayload ? (
-          <TripPulse payload={tripPayload} confirmed onOpen={() => {}} />
+          <TripPulse
+            payload={tripPayload}
+            confirmed
+            onOpen={() => {}}
+            worst={tripWorst}
+            selectedId={selectedId}
+            onSelect={select}
+          />
         ) : tripDraft ? (
           <TripPulse
             payload={tripDraft}
             confirmed={false}
             onConfirm={confirmTrip}
             onOpen={() => {}}
+            worst={tripWorst}
+            selectedId={selectedId}
+            onSelect={select}
           />
         ) : null}
         <div className="section-head">
@@ -689,31 +809,63 @@ export default function App() {
           visibleConditions={visibleConditions}
           route={tripPayload?.route?.geometry || null}
           routePreview={Boolean(tripDraft && !trip)}
-          tripEnds={tripOpen ? { start: tripStart, end: tripEnd } : null}
+          tripEnds={navigating ? null : tripOpen ? { start: tripStart, end: tripEnd } : null}
           pickMode={dropMode}
           onPickPoint={pickTripPoint}
+          follow={followCamera}
+          followOn={followOn}
+          userFix={
+            navigating && (navFix || userLocation)
+              ? { ...(navFix || userLocation), heading: followHeading }
+              : null
+          }
+          onFollowBreak={() => setFollowOn(false)}
         />
         <div className="map-search">
-          <div className="map-brand-row">
-            <div className="map-brand">This Bridge Is Fine</div>
-            {tripOpen ? null : (
-              <button className="locate map-drive" type="button" onClick={openDrive}>
-                {COPY.drive}
-              </button>
-            )}
-          </div>
-          {tripOpen ? (
-            tripComposer
+          {navigating ? (
+            <NavBanner banner={banner} note={navNote} />
           ) : (
-            <SearchBox onPick={goToPlace} near={searchNear} />
+            <>
+              <div className="map-brand-row">
+                <div className="map-brand">This Bridge Is Fine</div>
+                {tripOpen ? null : <DriveButton className="map-drive" onClick={openDrive} />}
+              </div>
+              {tripOpen ? (
+                tripComposer
+              ) : (
+                <SearchBox
+                  onPick={goToPlace}
+                  near={searchNear}
+                  onFocus={() => refreshPrecise()}
+                />
+              )}
+            </>
           )}
         </div>
-        {away && userLocation ? (
+        {navigating && approach ? (
+          <ApproachCard
+            bridge={approach}
+            onOpen={select}
+            onDismiss={() =>
+              setDismissedApproach((current) => new Set([...current, approach.id]))
+            }
+          />
+        ) : null}
+        {(away && userLocation && !navigating) || (navigating && !followOn) ? (
           <button
             type="button"
             className="recenter"
-            aria-label="Recenter on my location"
-            onClick={() => flyHome(userLocation)}
+            aria-label={navigating ? COPY.driveFollow : "Recenter on my location"}
+            onClick={() => {
+              if (navigating) {
+                refreshPrecise(true).then((fix) => {
+                  if (fix) setNavFix(fix);
+                  setFollowOn(true);
+                });
+                return;
+              }
+              flyHome(userLocation);
+            }}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="3.2" />
@@ -770,13 +922,23 @@ export default function App() {
 
       <aside className="col col-right">
         {trip && tripPayload ? (
-          <TripPulse payload={tripPayload} confirmed onOpen={() => {}} />
+          <TripPulse
+            payload={tripPayload}
+            confirmed
+            onOpen={() => {}}
+            worst={tripWorst}
+            selectedId={selectedId}
+            onSelect={select}
+          />
         ) : tripDraft ? (
           <TripPulse
             payload={tripDraft}
             confirmed={false}
             onConfirm={confirmTrip}
             onOpen={() => {}}
+            worst={tripWorst}
+            selectedId={selectedId}
+            onSelect={select}
           />
         ) : (
           <div className="pulse">
@@ -844,6 +1006,9 @@ export default function App() {
               confirmed={Boolean(trip)}
               onConfirm={confirmTrip}
               onOpen={() => setSheet("half")}
+              worst={tripWorst}
+              selectedId={selectedId}
+              onSelect={select}
             />
             {sheet !== "peek" && trip ? (
               <>

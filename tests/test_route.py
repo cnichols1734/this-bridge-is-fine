@@ -4,8 +4,14 @@ import backend.api as api
 from backend.api import create_app
 from backend.config import Config
 from backend.route import (
+    collect_route_roads,
+    extract_steps,
+    filter_on_drive,
     osrm_route_url,
     parse_lonlat,
+    pick_worst_on_drive,
+    road_keys,
+    roads_match,
     route_summary,
     select_route_bridges,
 )
@@ -25,7 +31,7 @@ def test_osrm_url_uses_configured_base():
     url = osrm_route_url((-87.63, 41.88), (-87.68, 42.05), base="https://router.example")
     assert url.startswith("https://router.example/route/v1/driving/")
     assert "geometries=geojson" in url
-    assert "steps=false" in url
+    assert "steps=true" in url
 
 
 def test_parse_lonlat():
@@ -115,6 +121,110 @@ def test_cap_fills_remaining_with_others_after_poor():
     assert capped is True
 
 
+def test_road_keys_normalize_highways_and_streets():
+    assert "I90" in road_keys("INTERSTATE 90")
+    assert "I90" in road_keys("I-90")
+    assert "I45" in road_keys("IH 45 NB")
+    assert "I45" in road_keys("Interstate 45")
+    assert "US59" in road_keys("US HIGHWAY 59")
+    assert "US59" in road_keys("US 59")
+    assert "SH288" in road_keys("SH 288")
+    assert "SH288" in road_keys("TX 288")
+    assert "FM1960" in road_keys("FARM TO MARKET 1960")
+    assert "FM1960" in road_keys("FM 1960")
+    assert "ALABAMA ST" in road_keys("W ALABAMA ST")
+    assert "ALABAMA ST" in road_keys("West Alabama Street")
+    assert "LAKE SHORE DR" in road_keys("LAKE SHORE DRIVE")
+    assert "LAKE SHORE DR" in road_keys("Lake Shore Drive")
+
+
+def test_on_the_drive_is_facility_not_feature_crossed():
+    on_i45 = _row(facility_carried="IH 45", feature_crossed="MAIN ST")
+    overpass = _row(facility_carried="INTERSTATE 45", feature_crossed="MAIN STREET")
+    surface = _row(facility_carried="W ALABAMA ST", feature_crossed="BUFFALO BAYOU")
+    river = _row(facility_carried="US HIGHWAY 59", feature_crossed="BUFFALO BAYOU")
+
+    i45_roads = ["Interstate 45", "I 45"]
+    assert roads_match(on_i45.facility_carried, i45_roads)
+    assert not roads_match(on_i45.feature_crossed, i45_roads)
+
+    main_roads = ["Main Street", "West Alabama Street"]
+    kept = filter_on_drive([on_i45, overpass, surface, river], main_roads)
+    assert [row.facility_carried for row in kept] == ["W ALABAMA ST"]
+
+    kept_i45 = filter_on_drive([on_i45, overpass, surface, river], i45_roads)
+    assert {row.facility_carried for row in kept_i45} == {"IH 45", "INTERSTATE 45"}
+
+
+def test_going_under_an_overpass_is_not_on_the_drive():
+    overpass = _row(facility_carried="INTERSTATE 90", feature_crossed="MAIN ST")
+    span = _row(facility_carried="MAIN STREET", feature_crossed="CHICAGO RIVER")
+    kept = filter_on_drive([overpass, span], ["Main Street"])
+    assert [row.facility_carried for row in kept] == ["MAIN STREET"]
+
+
+def test_no_route_names_keeps_the_spatial_set():
+    rows = [_row(facility_carried="LOCAL ROAD"), _row(facility_carried="IH 45")]
+    assert filter_on_drive(rows, []) == rows
+    assert filter_on_drive(rows, ["", " "]) == rows
+
+
+def test_collect_route_roads_reads_name_and_ref():
+    osrm = {
+        "legs": [
+            {
+                "steps": [
+                    {"name": "Interstate 45", "ref": "I 45;US 59"},
+                    {"name": "Main Street", "ref": ""},
+                    {"name": "Interstate 45", "ref": "I 45"},
+                ]
+            }
+        ]
+    }
+    assert collect_route_roads(osrm) == ["Interstate 45", "I 45", "US 59", "Main Street"]
+
+
+def test_extract_steps_keeps_maneuvers():
+    osrm = {
+        "legs": [
+            {
+                "steps": [
+                    {
+                        "name": "Lake Shore Drive",
+                        "ref": "",
+                        "distance": 400,
+                        "duration": 32,
+                        "maneuver": {
+                            "type": "turn",
+                            "modifier": "right",
+                            "location": [-87.62, 41.88],
+                        },
+                    }
+                ]
+            }
+        ]
+    }
+    steps = extract_steps(osrm)
+    assert steps[0]["type"] == "turn"
+    assert steps[0]["modifier"] == "right"
+    assert steps[0]["name"] == "Lake Shore Drive"
+    assert steps[0]["distance_m"] == 400
+    assert steps[0]["location"] == [-87.62, 41.88]
+
+
+def test_top_three_worst_are_poor_then_lowest_score():
+    rows = [
+        _row(bridge_condition="G", unease_score=10, lowest_rating=8, id="g-ok"),
+        _row(bridge_condition="F", unease_score=40, lowest_rating=5, id="f-mid"),
+        _row(bridge_condition="P", unease_score=20, lowest_rating=4, id="p-quiet"),
+        _row(bridge_condition="P", unease_score=70, lowest_rating=3, id="p-bad"),
+        _row(bridge_condition="G", unease_score=90, lowest_rating=7, id="g-busy"),
+        _row(bridge_condition="F", unease_score=5, lowest_rating=6, id="f-ok"),
+    ]
+    worst = pick_worst_on_drive(rows, 3)
+    assert [row.id for row in worst] == ["p-bad", "p-quiet", "g-busy"]
+
+
 def test_summary_stays_complete_when_list_is_capped():
     rows = [
         *[_row(bridge_condition="P", along=i / 20) for i in range(3)],
@@ -156,6 +266,8 @@ def _client(monkeypatch, *, route=None, matches=None, error=None):
                 },
                 "distance_m": 22116.6,
                 "duration_s": 1574.1,
+                "steps": [],
+                "roads": [],
             },
         )
     monkeypatch.setattr(api, "_fetch_route_bridges", lambda *_args, **_kwargs: matches or [])
@@ -239,12 +351,83 @@ def test_drive_lists_poor_first_and_keeps_full_counts(monkeypatch):
     assert payload["summary"]["bridges"] == 2
     assert payload["summary"]["poor"] == 1
     assert payload["summary"]["good"] == 1
-    assert payload["summary"]["listed"] == 1
+    assert payload["summary"]["listed"] == 2
     assert payload["summary"]["capped"] is True
-    assert [item["id"] for item in payload["bridges"]] == ["17-POOR"]
+    assert [item["id"] for item in payload["bridges"]] == ["17-POOR", "17-GOOD"]
     assert payload["bridges"][0]["condition"] == "P"
     assert payload["bridges"][0]["score"] == 60
     assert payload["bridges"][0]["adt"] == 18000
+    assert payload["worst"][0]["id"] == "17-POOR"
+    assert payload["route"]["steps"] == []
+
+
+def _api_bridge(**kw):
+    defaults = dict(
+        id=1,
+        state_code="48",
+        structure_number="X",
+        lat=29.76,
+        lng=-95.37,
+        bridge_condition="G",
+        lowest_rating=7,
+        unease_score=10,
+        along=0.4,
+        status_code="A",
+        status_label="Open",
+        headline=None,
+        facility_carried="MAIN ST",
+        feature_crossed="BUFFALO BAYOU",
+        adt=8000,
+        adt_suspect=False,
+        year_built=1980,
+        why=None,
+    )
+    defaults.update(kw)
+    return SimpleNamespace(**defaults)
+
+
+def test_drive_api_keeps_on_route_spans_not_overpasses(monkeypatch):
+    matches = [
+        (
+            _api_bridge(
+                id=1,
+                structure_number="UNDER",
+                facility_carried="INTERSTATE 45",
+                feature_crossed="MAIN ST",
+                bridge_condition="P",
+                unease_score=50,
+            ),
+            12.0,
+        ),
+        (
+            _api_bridge(
+                id=2,
+                structure_number="ON",
+                facility_carried="W ALABAMA ST",
+                feature_crossed="BUFFALO BAYOU",
+                bridge_condition="F",
+                unease_score=30,
+            ),
+            8.0,
+        ),
+    ]
+    route = {
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[-95.38, 29.75], [-95.36, 29.77]],
+        },
+        "distance_m": 1200,
+        "duration_s": 90,
+        "steps": [],
+        "roads": ["West Alabama Street", "Main Street"],
+    }
+    payload = _client(monkeypatch, route=route, matches=matches).get(
+        "/api/drive?from=-95.38,29.75&to=-95.36,29.77"
+    ).get_json()
+    assert [item["id"] for item in payload["bridges"]] == ["48-ON"]
+    assert payload["summary"]["bridges"] == 1
+    assert payload["summary"]["poor"] == 0
+    assert payload["worst"][0]["id"] == "48-ON"
 
 
 def test_drive_maps_router_errors(monkeypatch):

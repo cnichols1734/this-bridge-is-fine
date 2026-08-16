@@ -26,8 +26,8 @@ class Config:
     WORST_LIMIT = 10
     # Public OSRM demo. Point this at a self-hosted router if the demo is down.
     OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org")
-    # NBI points sit on the structure, not always the travel lane. 150 m catches
-    # the crossing without pulling in every nearby overpass.
+    # Spatial candidate gate only. On-vs-under is decided by matching
+    # facility_carried to the route's road names, not by this radius.
     ROUTE_BUFFER_M = int(os.environ.get("ROUTE_BUFFER_M", "150"))
     ROUTE_LIST_CAP = int(os.environ.get("ROUTE_LIST_CAP", "200"))
 

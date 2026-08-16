@@ -133,6 +133,7 @@ export const COPY = {
   nearest: "Nearest",
   lowestScores: "Lowest scores in view",
   drive: "Drive",
+  driveAction: "Start a drive",
   driveStart: "Start",
   driveEnd: "End",
   driveHere: "Your location",
@@ -147,6 +148,11 @@ export const COPY = {
   driveDown: "Routing is unavailable.",
   driveBridges: "Bridges on this drive",
   driveEmpty: "No structures on this drive.",
+  driveWorst: "Worst on this drive",
+  driveFollow: "Follow",
+  locationDenied: "Location is off. Using the map center.",
+  locationPreciseOff: "Precise location is unavailable.",
+  approachDismiss: "Dismiss",
 };
 
 export const RANK_NOTE = COPY.rankNote;
@@ -277,4 +283,204 @@ export function driveBridgesGeojson(bridges) {
 export function mapDotsCollection(viewportGeojson, driveBridges) {
   if (driveBridges != null) return driveBridgesGeojson(driveBridges);
   return viewportGeojson;
+}
+
+/** Official Poor first, then lowest public score, then lowest inspector rating. */
+export function pickWorstOnDrive(bridges, n = 3) {
+  const rows = Array.isArray(bridges) ? [...bridges] : [];
+  rows.sort((a, b) => {
+    const ap = officialCondition(a?.condition) === "P" ? 0 : 1;
+    const bp = officialCondition(b?.condition) === "P" ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    const as = a?.score == null ? 100 : Number(a.score);
+    const bs = b?.score == null ? 100 : Number(b.score);
+    if (as !== bs) return as - bs;
+    const al = a?.lowest == null ? 99 : Number(a.lowest);
+    const bl = b?.lowest == null ? 99 : Number(b.lowest);
+    return al - bl;
+  });
+  return rows.slice(0, n);
+}
+
+export function metersBetween(a, b) {
+  return kmBetween(a, b) * 1000;
+}
+
+function toRad(deg) {
+  return (deg * Math.PI) / 180;
+}
+
+export function bearingDegrees(from, to) {
+  if (!from || !to) return 0;
+  const y = Math.sin(toRad(to.lng - from.lng)) * Math.cos(toRad(to.lat));
+  const x =
+    Math.cos(toRad(from.lat)) * Math.sin(toRad(to.lat)) -
+    Math.sin(toRad(from.lat)) *
+      Math.cos(toRad(to.lat)) *
+      Math.cos(toRad(to.lng - from.lng));
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+function projectT(lng, lat, a, b) {
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const den = dx * dx + dy * dy;
+  if (den <= 0) return 0;
+  const t = ((lng - ax) * dx + (lat - ay) * dy) / den;
+  return Math.max(0, Math.min(1, t));
+}
+
+export function pointAlongRoute(lng, lat, coordinates) {
+  if (!coordinates?.length) return 0;
+  if (coordinates.length === 1) return 0;
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < coordinates.length - 1; i += 1) {
+    const a = coordinates[i];
+    const b = coordinates[i + 1];
+    const d = metersBetween(
+      { lng: a[0], lat: a[1] },
+      { lng: b[0], lat: b[1] }
+    );
+    segs.push({ d, a, b });
+    total += d;
+  }
+  if (total <= 0) return 0;
+  let best = { dist: Infinity, along: 0 };
+  let walked = 0;
+  for (const seg of segs) {
+    const t = projectT(lng, lat, seg.a, seg.b);
+    const pt = [seg.a[0] + (seg.b[0] - seg.a[0]) * t, seg.a[1] + (seg.b[1] - seg.a[1]) * t];
+    const dist = metersBetween({ lng, lat }, { lng: pt[0], lat: pt[1] });
+    if (dist < best.dist) best = { dist, along: walked + t * seg.d };
+    walked += seg.d;
+  }
+  return best.along / total;
+}
+
+export function routeHeadingAt(along01, coordinates) {
+  if (!coordinates || coordinates.length < 2) return 0;
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < coordinates.length - 1; i += 1) {
+    const a = coordinates[i];
+    const b = coordinates[i + 1];
+    const d = metersBetween(
+      { lng: a[0], lat: a[1] },
+      { lng: b[0], lat: b[1] }
+    );
+    segs.push({ d, a, b });
+    total += d;
+  }
+  if (total <= 0) return 0;
+  let target = Math.min(1, Math.max(0, along01)) * total + 12;
+  if (target > total) target = total;
+  let walked = 0;
+  for (const seg of segs) {
+    if (walked + seg.d >= target || walked + seg.d === total) {
+      return bearingDegrees(
+        { lng: seg.a[0], lat: seg.a[1] },
+        { lng: seg.b[0], lat: seg.b[1] }
+      );
+    }
+    walked += seg.d;
+  }
+  const last = segs[segs.length - 1];
+  return bearingDegrees(
+    { lng: last.a[0], lat: last.a[1] },
+    { lng: last.b[0], lat: last.b[1] }
+  );
+}
+
+export function formatManeuver(step) {
+  if (!step) return "Continue";
+  const name = (step.name || step.ref || "").trim();
+  const type = step.type || "continue";
+  const turn = {
+    left: "Left",
+    right: "Right",
+    "sharp left": "Sharp left",
+    "sharp right": "Sharp right",
+    "slight left": "Slight left",
+    "slight right": "Slight right",
+    straight: "Continue",
+    uturn: "U-turn",
+  }[step.modifier] || "";
+  if (type === "arrive") return "Arrive";
+  if (type === "depart") return name ? `Start on ${name}` : "Start";
+  if (type === "merge") return name ? `Merge onto ${name}` : "Merge";
+  if (type === "on ramp") return name ? `Onto ${name}` : "On ramp";
+  if (type === "off ramp") return name ? `Exit toward ${name}` : "Exit";
+  if (type === "fork") return turn && name ? `${turn} fork onto ${name}` : "Fork";
+  if (type === "roundabout") return name ? `Roundabout onto ${name}` : "Roundabout";
+  if (type === "new name" || type === "continue") {
+    return name ? `Continue on ${name}` : "Continue";
+  }
+  if (turn && name) return `${turn} on ${name}`;
+  if (turn) return turn;
+  return name || "Continue";
+}
+
+export function navBanner(steps, along01, routeM) {
+  if (!steps?.length || !routeM) return null;
+  const traveled = Math.min(1, Math.max(0, along01)) * routeM;
+  let acc = 0;
+  let index = 0;
+  for (let i = 0; i < steps.length; i += 1) {
+    const end = acc + (Number(steps[i].distance_m) || 0);
+    if (traveled <= end + 8) {
+      index = i;
+      const remaining = Math.max(0, end - traveled);
+      if (remaining < 35 && i < steps.length - 1) {
+        return {
+          text: formatManeuver(steps[i + 1]),
+          distance_m: remaining,
+          step: steps[i + 1],
+        };
+      }
+      return {
+        text: formatManeuver(steps[i]),
+        distance_m: remaining,
+        step: steps[i],
+      };
+    }
+    acc = end;
+    index = i;
+  }
+  const last = steps[index];
+  return { text: formatManeuver(last), distance_m: 0, step: last };
+}
+
+export const APPROACH_WINDOW_M = 280;
+export const APPROACH_PAST_M = 40;
+
+export function pickApproachingBridge({
+  bridges,
+  worstIds,
+  along,
+  routeM,
+  dismissedIds,
+} = {}) {
+  if (!bridges?.length || !routeM) return null;
+  const worst = new Set(worstIds || []);
+  const dismissed = dismissedIds || new Set();
+  const ranked = [];
+  for (const bridge of bridges) {
+    if (!bridge?.id || dismissed.has(bridge.id) || bridge.along == null) continue;
+    const delta = (Number(bridge.along) - along) * routeM;
+    if (delta > APPROACH_WINDOW_M || delta < -APPROACH_PAST_M) continue;
+    ranked.push({ bridge, delta });
+  }
+  ranked.sort((a, b) => {
+    const ap = officialCondition(a.bridge.condition) === "P" ? 0 : 1;
+    const bp = officialCondition(b.bridge.condition) === "P" ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    const aw = worst.has(a.bridge.id) ? 0 : 1;
+    const bw = worst.has(b.bridge.id) ? 0 : 1;
+    if (aw !== bw) return aw - bw;
+    return a.delta - b.delta;
+  });
+  return ranked[0]?.bridge ?? null;
 }

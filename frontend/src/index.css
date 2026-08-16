@@ -149,19 +149,149 @@ button {
 
 .brand-actions {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
+}
+
+.drive-btn {
+  height: 36px;
+  padding: 0 14px;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.drive-btn:hover {
+  background: #333336;
 }
 
 .map-brand-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
 .map-drive {
   flex: 0 0 auto;
+}
+
+.nav-banner {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.nav-turn {
+  font-weight: 600;
+  font-size: 1.0625rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.nav-dist {
+  margin-top: 2px;
+  color: var(--mute);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-note {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+.approach-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 80px;
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.approach-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  text-align: left;
+  padding: 10px 12px;
+}
+
+.approach-title,
+.trip-worst-title {
+  display: block;
+  font-weight: 510;
+  letter-spacing: -0.015em;
+}
+
+.approach-meta,
+.trip-worst-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--mute);
+  font-size: 0.75rem;
+}
+
+.approach-dismiss {
+  width: 44px;
+  color: var(--mute);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.trip-worst {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.trip-worst-label {
+  font-size: 0.6875rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+  color: var(--mute);
+  margin-bottom: 4px;
+}
+
+.trip-worst-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  text-align: left;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  min-height: 36px;
+}
+
+.trip-worst-row.is-poor {
+  background: rgb(180 35 24 / 0.04);
+}
+
+.trip-worst-row.is-on {
+  background: var(--well);
+}
+
+.user-puck {
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  background: var(--ink);
+  border: 2px solid #ffffff;
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
 }
 
 .trip-bar {
@@ -285,6 +415,7 @@ button {
   cursor: crosshair;
 }
 
+.drive-btn:focus-visible,
 .locate:focus-visible,
 .trip-drop:focus-visible,
 .trip-clear:focus-visible,
@@ -1138,6 +1269,20 @@ button {
     right: 12px;
   }
 
+  .app.has-nav .map-search {
+    right: 68px;
+  }
+
+  .approach-card {
+    bottom: calc(var(--sheet-h) + 12px);
+    right: 12px;
+  }
+
+  .drive-btn {
+    height: 44px;
+    padding: 0 16px;
+  }
+
   .app.has-trip .trip-bar {
     gap: 6px;
     padding: 8px 10px 8px;
@@ -1472,6 +1617,20 @@ button {
   .sheet .trip-use {
     height: 36px;
     margin-top: 6px;
+  }
+
+  .sheet .trip-worst {
+    display: flex;
+    margin-top: 6px;
+  }
+
+  .sheet .trip-worst-label {
+    display: none;
+  }
+
+  .sheet .trip-worst-row {
+    padding: 6px 0;
+    min-height: 32px;
   }
 
   .sheet.peek .list,

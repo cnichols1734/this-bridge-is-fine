@@ -22,6 +22,7 @@ SCAN = [
     ROOT / "frontend" / "src" / "App.jsx",
     ROOT / "frontend" / "src" / "Detail.jsx",
     ROOT / "frontend" / "src" / "TripBar.jsx",
+    ROOT / "frontend" / "src" / "NavOverlay.jsx",
     ROOT / "backend" / "api.py",
     ROOT / "backend" / "route.py",
 ]
@@ -84,6 +85,17 @@ def test_landscape_peek_keeps_trip_facts_visible():
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
     assert ".sheet-pulse:not(.trip-pulse) .pulse-copy" in css
     assert ".sheet .trip-pulse .pulse-copy" in css
+    assert ".trip-worst" in css
+    assert ".sheet.peek .trip-worst" not in css
+
+
+def test_drive_is_a_real_button():
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    css = (ROOT / "frontend" / "src" / "index.css").read_text()
+    assert "DriveButton" in app
+    assert "Start a drive" in (ROOT / "frontend" / "src" / "format.js").read_text()
+    assert ".drive-btn" in css
+    assert "background: var(--ink)" in css
 
 
 def test_overlays_use_hairlines_not_drop_shadows():
