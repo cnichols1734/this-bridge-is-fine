@@ -119,6 +119,8 @@ test("user-facing strings stay dry and civic", () => {
   assert.equal(COPY.driveNone, "No driving route for these points.");
   assert.equal(COPY.driveDown, "Routing is unavailable.");
   assert.equal(COPY.locationDenied, "Location is off. Using the map center.");
+  assert.equal(COPY.locationApproximate, "Location is approximate. Using the map center.");
+  assert.equal(COPY.driveLocating, "Finding your location.");
   assert.doesNotMatch(COPY.drive, /!/);
   assert.doesNotMatch(COPY.driveAction, /!/);
 });
