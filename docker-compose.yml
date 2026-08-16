@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgis/postgis:16-3.5
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: bridges
+      POSTGRES_PASSWORD: bridges
+      POSTGRES_DB: bridges
+    ports:
+      - "5432:5432"
+    volumes:
+      - bridges_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bridges -d bridges"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bridges_pg:
