@@ -405,20 +405,7 @@ def fetch_page_resilient(
     return last_payload
 
 
-def run_ingest(
-    max_pages: int | None = None,
-    state: str | None = None,
-    poor_only: bool = False,
-) -> IngestRun:
-    print("connecting to database…", flush=True)
-    init_db()
-    print("schema ready", flush=True)
-    db = get_session()
-    run = IngestRun(status="running", source_date="2025-06-20")
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
+def build_queries(state: str | None = None, poor_only: bool = False) -> list[str]:
     clauses = []
     if state:
         clauses.append(f"STATE_CODE_001='{state.zfill(2)}'")
@@ -426,17 +413,64 @@ def run_ingest(
         clauses.append("BRIDGE_CONDITION='P'")
     extra_where = " AND ".join(clauses) if clauses else None
     if extra_where:
-        queries = [extra_where]
-    else:
-        listed = ",".join(f"'{code}'" for code in NBI_STATE_CODES)
-        queries = [f"STATE_CODE_001='{code}'" for code in NBI_STATE_CODES]
-        queries.append(f"STATE_CODE_001 IS NULL OR STATE_CODE_001 NOT IN ({listed})")
+        return [extra_where]
+    listed = ",".join(f"'{code}'" for code in NBI_STATE_CODES)
+    queries = [f"STATE_CODE_001='{code}'" for code in NBI_STATE_CODES]
+    queries.append(f"STATE_CODE_001 IS NULL OR STATE_CODE_001 NOT IN ({listed})")
+    return queries
 
-    http = requests.Session()
-    http.headers["User-Agent"] = "ThisBridgeIsFine/1.0 (civic inventory; local ingest)"
+
+def remaining_queries(queries: list[str], checkpoint: str | None) -> list[str]:
+    """Skip queries already finished in an interrupted run."""
+    if not checkpoint:
+        return list(queries)
+    try:
+        index = queries.index(checkpoint)
+    except ValueError:
+        return list(queries)
+    return queries[index + 1 :]
+
+
+def run_ingest(
+    max_pages: int | None = None,
+    state: str | None = None,
+    poor_only: bool = False,
+    resume: bool = False,
+) -> IngestRun:
+    print("connecting to database…", flush=True)
+    init_db()
+    print("schema ready", flush=True)
+    db = get_session()
+    queries = build_queries(state, poor_only)
+    run = None
     pages = 0
     upserted = 0
     skipped = 0
+    if resume:
+        run = (
+            db.query(IngestRun)
+            .filter(IngestRun.status == "running")
+            .order_by(IngestRun.started_at.desc())
+            .first()
+        )
+        if run is not None:
+            pages = run.pages or 0
+            upserted = run.rows_upserted or 0
+            skipped = run.rows_skipped or 0
+            queries = remaining_queries(queries, run.checkpoint)
+            print(
+                f"resuming run {run.id} after {run.checkpoint!r} "
+                f"({len(queries)} queries left)",
+                flush=True,
+            )
+    if run is None:
+        run = IngestRun(status="running", source_date="2025-06-20")
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+    http = requests.Session()
+    http.headers["User-Agent"] = "ThisBridgeIsFine/1.0 (civic inventory; local ingest)"
 
     try:
         for query in queries:
@@ -478,6 +512,11 @@ def run_ingest(
                 ):
                     break
                 time.sleep(SLEEP_SECONDS)
+            run.checkpoint = query
+            run.rows_upserted = upserted
+            run.rows_skipped = skipped
+            run.pages = pages
+            db.commit()
             if max_pages is not None and pages >= max_pages:
                 break
 
@@ -525,8 +564,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-pages", type=int, default=None)
     parser.add_argument("--state", type=str, default=None, help="FIPS state code, e.g. 17")
     parser.add_argument("--poor-only", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue an interrupted national load from the last finished state",
+    )
     args = parser.parse_args(argv)
-    run = run_ingest(max_pages=args.max_pages, state=args.state, poor_only=args.poor_only)
+    run = run_ingest(
+        max_pages=args.max_pages,
+        state=args.state,
+        poor_only=args.poor_only,
+        resume=args.resume,
+    )
     print(
         f"done status={run.status} upserted={run.rows_upserted} "
         f"skipped={run.rows_skipped} pages={run.pages}"

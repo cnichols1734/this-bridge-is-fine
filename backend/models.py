@@ -94,3 +94,4 @@ class IngestRun(Base):
     pages: Mapped[int] = mapped_column(Integer, default=0)
     source_date: Mapped[str | None] = mapped_column(String(16))
     error: Mapped[str | None] = mapped_column(Text)
+    checkpoint: Mapped[str | None] = mapped_column(Text)

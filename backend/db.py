@@ -44,3 +44,9 @@ def init_db() -> None:
                 "ON bridges (lng, lat)"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE ingest_runs "
+                "ADD COLUMN IF NOT EXISTS checkpoint TEXT"
+            )
+        )
