@@ -1,3 +1,7 @@
+# Shared by web (and by ingest services until their Config File is
+# /railway.ingest.json). Do not set healthcheckPath here: config-as-code
+# overrides the dashboard, and ingest-once does not listen on HTTP.
+# Web keeps /api/health as a dashboard setting on the web service only.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
