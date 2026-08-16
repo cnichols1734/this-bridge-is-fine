@@ -82,13 +82,13 @@ export const CONDITION_WORDS = {
 };
 
 /**
- * Official G/F/P on the map. One chromatic accent: Poor red.
- * Good and Fair stay cool-neutral so the dots are not a traffic light.
+ * Official G/F/P on the map. Christopher chose the original Good green
+ * and Fair gold. Poor remains the one red accent for ratings ≤4.
  */
 export const CONDITION_COLORS = {
   P: "#b42318",
-  F: "#424245",
-  G: "#8e8e93",
+  F: "#c4a84a",
+  G: "#5c7a52",
   U: "#c7c7cc",
 };
 
