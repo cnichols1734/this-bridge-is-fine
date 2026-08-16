@@ -8,6 +8,10 @@ import {
   RATING_NOTE,
   conditionClass,
   conditionVisible,
+  formatDriveDistance,
+  formatDriveTime,
+  formatEta,
+  nextDropSlot,
   officialCondition,
   ratingBand,
   ratingClass,
@@ -100,4 +104,32 @@ test("user-facing strings stay dry and civic", () => {
   assert.doesNotMatch(blob, /★/);
   assert.match(COPY.poorDefinition, /scored 4 or below/);
   assert.match(COPY.rankNote, /Not an official grade/);
+  assert.equal(COPY.driveUse, "Use this drive");
+  assert.equal(COPY.driveBack, "Back");
+  assert.equal(COPY.driveNone, "No driving route for these points.");
+  assert.equal(COPY.driveDown, "Routing is unavailable.");
+  assert.doesNotMatch(COPY.drive, /!/);
+});
+
+test("drop points fill the next empty end and do not imply a wipe", () => {
+  assert.equal(nextDropSlot(null, null, null), "start");
+  assert.equal(nextDropSlot({ label: "A" }, null, null), "end");
+  assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, null), "end");
+  assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, "start"), "start");
+  assert.equal(nextDropSlot(null, { label: "B" }, "end"), "end");
+});
+
+test("drive time, distance, and ETA stay precise", () => {
+  assert.equal(formatDriveTime(20), "Under 1 min");
+  assert.equal(formatDriveTime(12 * 60), "12 min");
+  assert.equal(formatDriveTime(72 * 60), "1 hr 12 min");
+  assert.equal(formatDriveTime(120 * 60), "2 hr");
+  assert.equal(formatDriveDistance(80), "262 ft");
+  assert.equal(formatDriveDistance(8851), "5.5 mi");
+  assert.equal(formatDriveDistance(22116.6), "14 mi");
+  assert.equal(formatDriveDistance(238000), "148 mi");
+  assert.match(
+    formatEta(90 * 60, new Date("2026-08-16T15:00:00")),
+    /4:30/
+  );
 });

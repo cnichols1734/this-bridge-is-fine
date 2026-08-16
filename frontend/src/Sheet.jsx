@@ -6,20 +6,24 @@ function viewportH() {
   return window.visualViewport?.height || window.innerHeight;
 }
 
-export function detentHeight(detent) {
+export function detentHeight(detent, roomy = false) {
   const h = viewportH();
   const landscape = window.innerWidth > h && h <= 500;
   if (detent === "full") return Math.round(h * (landscape ? 0.94 : 0.92));
   if (detent === "half") return Math.round(h * (landscape ? 0.52 : 0.56));
+  if (roomy) {
+    if (landscape) return Math.min(188, Math.max(156, Math.round(h * 0.46)));
+    return Math.round(h * 0.25);
+  }
   if (landscape) return Math.min(96, Math.round(h * 0.26));
   return Math.min(156, Math.round(h * 0.22));
 }
 
-function nearestDetent(height, dismissible) {
-  const peek = detentHeight("peek");
+function nearestDetent(height, dismissible, roomy = false) {
+  const peek = detentHeight("peek", roomy);
   if (dismissible && height < peek * 0.62) return "dismiss";
   return DETENTS.reduce((best, name) => {
-    const delta = Math.abs(detentHeight(name) - height);
+    const delta = Math.abs(detentHeight(name, roomy) - height);
     return delta < best.delta ? { name, delta } : best;
   }, { name: "peek", delta: Infinity }).name;
 }
@@ -28,11 +32,12 @@ export default function Sheet({
   detent,
   onDetent,
   onDismiss,
+  roomy = false,
   children,
 }) {
   const [dragH, setDragH] = useState(null);
   const drag = useRef(null);
-  const height = dragH ?? detentHeight(detent);
+  const height = dragH ?? detentHeight(detent, roomy);
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty("--sheet-h", `${height}px`);
@@ -77,8 +82,8 @@ export default function Sheet({
     if (!state) return;
     const now = performance.now();
     const dy = state.y - event.clientY;
-    const max = detentHeight("full");
-    const min = onDismiss ? 56 : detentHeight("peek");
+    const max = detentHeight("full", roomy);
+    const min = onDismiss ? 56 : detentHeight("peek", roomy);
     const next = Math.min(max, Math.max(min, state.h + dy));
     const dt = now - state.lastT;
     if (dt > 0) {
@@ -94,7 +99,7 @@ export default function Sheet({
     if (!state) return;
     drag.current = null;
     const current = dragH ?? height;
-    let next = nearestDetent(current, Boolean(onDismiss));
+    let next = nearestDetent(current, Boolean(onDismiss), roomy);
     if (state.v > 0.55) {
       const i = DETENTS.indexOf(detent);
       next = DETENTS[Math.min(i + 1, DETENTS.length - 1)];
@@ -107,7 +112,7 @@ export default function Sheet({
 
   const startDrag = (event) => {
     if (event.button && event.button !== 0) return;
-    if (event.target.closest(".sheet-close, a, input, .row")) return;
+    if (event.target.closest(".sheet-close, a, input, .row, .trip-use")) return;
     if (!event.target.closest(".sheet-handle, .sheet-drag")) return;
     onPointerDown(event);
   };

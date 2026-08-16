@@ -21,7 +21,9 @@ SCAN = [
     ROOT / "frontend" / "src" / "format.js",
     ROOT / "frontend" / "src" / "App.jsx",
     ROOT / "frontend" / "src" / "Detail.jsx",
+    ROOT / "frontend" / "src" / "TripBar.jsx",
     ROOT / "backend" / "api.py",
+    ROOT / "backend" / "route.py",
 ]
 
 
@@ -50,6 +52,15 @@ def test_low_zoom_does_not_claim_city_scale_is_required():
     assert "No structures in this view." in fmt
 
 
+def test_trip_errors_are_not_desktop_only():
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    bar = (ROOT / "frontend" / "src" / "TripBar.jsx").read_text()
+    assert "error={tripError}" in app
+    assert "tripOpen && (tripError || tripBusy)" in app
+    assert "trip-error" in bar
+    assert "Daily crossings on Poor" not in bar
+
+
 def test_css_official_dots_use_original_good_fair():
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
     assert "--good: #5c7a52" in css
@@ -57,6 +68,12 @@ def test_css_official_dots_use_original_good_fair():
     assert "--poor: #b42318" in css
     assert ".rating.is-poor" in css
     assert ".rating.is-low" not in css
+
+
+def test_landscape_peek_keeps_trip_facts_visible():
+    css = (ROOT / "frontend" / "src" / "index.css").read_text()
+    assert ".sheet-pulse:not(.trip-pulse) .pulse-copy" in css
+    assert ".sheet .trip-pulse .pulse-copy" in css
 
 
 def test_overlays_use_hairlines_not_drop_shadows():

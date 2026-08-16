@@ -43,6 +43,98 @@ function stripOverlay(map) {
   if (map.getSource("bridges")) map.removeSource("bridges");
 }
 
+function stripRoute(map) {
+  if (map.getLayer("drive-ends")) map.removeLayer("drive-ends");
+  if (map.getLayer("drive-line")) map.removeLayer("drive-line");
+  if (map.getLayer("drive-case")) map.removeLayer("drive-case");
+  if (map.getSource("drive-ends")) map.removeSource("drive-ends");
+  if (map.getSource("drive")) map.removeSource("drive");
+}
+
+function routeCollection(route) {
+  if (!route?.coordinates?.length) return empty;
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: route.coordinates },
+      },
+    ],
+  };
+}
+
+function endsCollection(ends) {
+  const features = [];
+  if (ends?.start) {
+    features.push({
+      type: "Feature",
+      properties: { role: "start" },
+      geometry: { type: "Point", coordinates: [ends.start.lng, ends.start.lat] },
+    });
+  }
+  if (ends?.end) {
+    features.push({
+      type: "Feature",
+      properties: { role: "end" },
+      geometry: { type: "Point", coordinates: [ends.end.lng, ends.end.lat] },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+function addRouteOverlay(map, route, ends, preview, basemap) {
+  if (!map.getStyle()) return;
+  try {
+    stripRoute(map);
+    const satellite = basemap === "satellite";
+    const before = map.getLayer("bridges-dots") ? "bridges-dots" : undefined;
+    map.addSource("drive", { type: "geojson", data: routeCollection(route) });
+    map.addLayer(
+      {
+        id: "drive-case",
+        type: "line",
+        source: "drive",
+        paint: {
+          "line-color": satellite ? "#1d1d1f" : "#ffffff",
+          "line-width": 7,
+          "line-opacity": route ? 0.92 : 0,
+        },
+      },
+      before
+    );
+    map.addLayer(
+      {
+        id: "drive-line",
+        type: "line",
+        source: "drive",
+        paint: {
+          "line-color": "#1d1d1f",
+          "line-width": 3.25,
+          "line-opacity": route ? (preview ? 0.55 : 0.92) : 0,
+          ...(preview ? { "line-dasharray": [1.6, 1.4] } : {}),
+        },
+      },
+      before
+    );
+    map.addSource("drive-ends", { type: "geojson", data: endsCollection(ends) });
+    map.addLayer({
+      id: "drive-ends",
+      type: "circle",
+      source: "drive-ends",
+      paint: {
+        "circle-radius": ["match", ["get", "role"], "end", 6.5, 5.5],
+        "circle-color": ["match", ["get", "role"], "end", "#1d1d1f", "#ffffff"],
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#1d1d1f",
+      },
+    });
+  } catch {
+    /* style not ready */
+  }
+}
+
 function addBridgeOverlay(map, data, selectedId, basemap, codes) {
   if (!map.getStyle()) return false;
   try {
@@ -109,27 +201,42 @@ export default function MapView({
   selectedId,
   basemap = "map",
   visibleConditions = ["G", "F", "P"],
+  route = null,
+  routePreview = false,
+  tripEnds = null,
+  pickMode = false,
   onReady,
   onMove,
   onSelect,
   onDeselect,
+  onPickPoint,
 }) {
   const root = useRef(null);
   const mapRef = useRef(null);
   const onMoveRef = useRef(onMove);
   const onSelectRef = useRef(onSelect);
   const onDeselectRef = useRef(onDeselect);
+  const onPickPointRef = useRef(onPickPoint);
   const geojsonRef = useRef(geojson);
   const selectedRef = useRef(selectedId);
   const basemapRef = useRef(basemap);
   const codesRef = useRef(visibleConditions);
+  const routeRef = useRef(route);
+  const previewRef = useRef(routePreview);
+  const endsRef = useRef(tripEnds);
+  const pickRef = useRef(pickMode);
   onMoveRef.current = onMove;
   onSelectRef.current = onSelect;
   onDeselectRef.current = onDeselect;
+  onPickPointRef.current = onPickPoint;
   geojsonRef.current = geojson;
   selectedRef.current = selectedId;
   basemapRef.current = basemap;
   codesRef.current = visibleConditions;
+  routeRef.current = route;
+  previewRef.current = routePreview;
+  endsRef.current = tripEnds;
+  pickRef.current = pickMode;
 
   useEffect(() => {
     if (!root.current || mapRef.current) return undefined;
@@ -149,6 +256,7 @@ export default function MapView({
     );
 
     const onDotClick = (event) => {
+      if (pickRef.current) return;
       const feature = event.features?.[0];
       if (feature?.properties?.id) {
         event.originalEvent?.stopPropagation?.();
@@ -156,6 +264,13 @@ export default function MapView({
       }
     };
     const onMapClick = (event) => {
+      if (pickRef.current) {
+        onPickPointRef.current?.({
+          lng: event.lngLat.lng,
+          lat: event.lngLat.lat,
+        });
+        return;
+      }
       const hits = map.getLayer("bridges-dots")
         ? map.queryRenderedFeatures(event.point, { layers: ["bridges-dots"] })
         : [];
@@ -185,6 +300,13 @@ export default function MapView({
         codesRef.current
       );
       if (ok) {
+        addRouteOverlay(
+          map,
+          routeRef.current,
+          endsRef.current,
+          previewRef.current,
+          basemapRef.current
+        );
         bindOverlayEvents();
         return;
       }
@@ -240,5 +362,31 @@ export default function MapView({
     }
   }, [selectedId, visibleConditions]);
 
-  return <div ref={root} className={`map map-${basemap}`} />;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map?.getStyle()) return;
+    if (map.getSource("drive") && map.getSource("drive-ends")) {
+      map.getSource("drive").setData(routeCollection(route));
+      map.getSource("drive-ends").setData(endsCollection(tripEnds));
+      if (map.getLayer("drive-line")) {
+        map.setPaintProperty(
+          "drive-line",
+          "line-opacity",
+          route ? (routePreview ? 0.55 : 0.92) : 0
+        );
+        map.setPaintProperty(
+          "drive-line",
+          "line-dasharray",
+          routePreview ? [1.6, 1.4] : [1, 0]
+        );
+      }
+      if (map.getLayer("drive-case")) {
+        map.setPaintProperty("drive-case", "line-opacity", route ? 0.92 : 0);
+      }
+      return;
+    }
+    addRouteOverlay(map, route, tripEnds, routePreview, basemap);
+  }, [route, routePreview, tripEnds, basemap]);
+
+  return <div ref={root} className={`map map-${basemap}${pickMode ? " is-pick" : ""}`} />;
 }
