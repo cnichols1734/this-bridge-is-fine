@@ -6,10 +6,8 @@ import TripBar from "./TripBar.jsx";
 import Sheet, { detentHeight } from "./Sheet.jsx";
 import { fetchBridge, fetchDrive, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
 import {
-  getPrecisePosition,
-  isApproximateError,
   isPermissionDenied,
-  isPreciseFix,
+  shouldAcceptFix,
   waitForPreciseFix,
   watchPrecisePosition,
 } from "./geo.js";
@@ -212,6 +210,7 @@ export default function App() {
   const wasDrivePinsOn = useRef(false);
   const navigatingRef = useRef(false);
   const lastFixAt = useRef(0);
+  const lastFix = useRef(null);
   const fixGen = useRef(0);
 
   const toggleCondition = useCallback((code) => {
@@ -344,7 +343,11 @@ export default function App() {
   }, []);
 
   const applyFix = useCallback((fix) => {
-    if (!fix || !isPreciseFix(fix)) return null;
+    if (!fix) return null;
+    if (lastFix.current && !shouldAcceptFix(fix, lastFix.current)) {
+      return lastFix.current;
+    }
+    lastFix.current = fix;
     lastFixAt.current = fix.at || Date.now();
     setUserLocation(fix);
     return fix;
@@ -352,19 +355,26 @@ export default function App() {
 
   const locationNote = useCallback((err) => {
     if (isPermissionDenied(err)) return COPY.locationDenied;
-    if (isApproximateError(err)) return COPY.locationApproximate;
     return COPY.locationPreciseOff;
   }, []);
 
   const refreshPrecise = useCallback(
-    (force = false) => {
-      if (!force && Date.now() - lastFixAt.current < 8000 && userLocation && isPreciseFix(userLocation)) {
+    (force = false, onFix) => {
+      if (!force && Date.now() - lastFixAt.current < 8000 && userLocation) {
+        onFix?.(userLocation);
         return Promise.resolve(userLocation);
       }
-      return getPrecisePosition()
-        .then((fix) => {
+      return waitForPreciseFix({
+        onFix: (fix) => {
+          const applied = applyFix(fix);
+          if (!applied) return;
           setNavNote(null);
-          return applyFix(fix);
+          onFix?.(applied);
+        },
+      })
+        .then((result) => {
+          setNavNote(null);
+          return applyFix(result.fix) || result.fix;
         })
         .catch((err) => {
           setNavNote(locationNote(err));
@@ -384,7 +394,7 @@ export default function App() {
   }, [center]);
 
   const locate = useCallback(() => {
-    refreshPrecise(true).then((fix) => {
+    refreshPrecise(true, (fix) => flyHome(fix)).then((fix) => {
       if (fix) flyHome(fix);
     });
   }, [flyHome, refreshPrecise]);
@@ -447,18 +457,31 @@ export default function App() {
     setTripOpen(true);
     setFixingStart(true);
     setSheet("peek");
-    waitForPreciseFix()
+    const adoptHere = (fix) => {
+      const applied = applyFix(fix);
+      if (!applied) return;
+      setTripStart((current) => {
+        if (current && current.label !== COPY.driveHere && current.label !== COPY.driveCenter) {
+          return current;
+        }
+        return { ...applied, label: COPY.driveHere };
+      });
+    };
+    waitForPreciseFix({
+      onFix: (fix) => {
+        if (gen !== fixGen.current) return;
+        setFixingStart(false);
+        setNavNote(null);
+        adoptHere(fix);
+      },
+    })
       .then((result) => {
         if (gen !== fixGen.current) return;
         setFixingStart(false);
-        if (result.precise) {
+        if (result.fix) {
           setNavNote(null);
-          applyFix(result.fix);
-          setTripStart({ ...result.fix, label: COPY.driveHere });
-          return;
+          adoptHere(result.fix);
         }
-        setNavNote(COPY.locationApproximate);
-        setTripStart(mapCenterStart());
       })
       .catch((err) => {
         if (gen !== fixGen.current) return;
@@ -476,17 +499,22 @@ export default function App() {
     setDismissedApproach(new Set());
     navigatingRef.current = true;
     setNavigating(true);
-    waitForPreciseFix()
+    waitForPreciseFix({
+      onFix: (fix) => {
+        const applied = applyFix(fix);
+        if (!applied) return;
+        setNavNote(null);
+        setNavFix(applied);
+        setFollowOn(true);
+      },
+    })
       .then((result) => {
-        if (result.precise) {
-          setNavNote(null);
-          applyFix(result.fix);
-          setNavFix(result.fix);
-          setFollowOn(true);
-          return;
-        }
-        setNavNote(COPY.locationApproximate);
-        setFollowOn(false);
+        if (!result.fix) return;
+        const applied = applyFix(result.fix);
+        if (!applied) return;
+        setNavNote(null);
+        setNavFix(applied);
+        setFollowOn(true);
       })
       .catch((err) => {
         setNavNote(locationNote(err));
@@ -598,11 +626,11 @@ export default function App() {
         setNavFix(fix);
       },
       (err) => {
-        setNavNote(locationNote(err));
+        if (isPermissionDenied(err)) setNavNote(COPY.locationDenied);
       }
     );
     return stop;
-  }, [navigating, applyFix, locationNote]);
+  }, [navigating, applyFix]);
 
   const onReady = (map) => {
     mapRef.current = map;
@@ -693,10 +721,8 @@ export default function App() {
   }, [tripOpen, tripPayload, loadViewport]);
 
   const roomySheet = Boolean(tripOpen && (tripPayload || tripError) && !detail);
-  const searchNear = userLocation && isPreciseFix(userLocation) ? userLocation : center;
-  const preciseHere =
-    (navFix && isPreciseFix(navFix) ? navFix : null) ||
-    (userLocation && isPreciseFix(userLocation) ? userLocation : null);
+  const searchNear = userLocation || center;
+  const preciseHere = navFix || userLocation;
 
   const tripComposer = tripOpen ? (
     <TripBar

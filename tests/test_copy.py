@@ -127,9 +127,13 @@ def test_drive_start_waits_for_a_fresh_precise_fix():
     open_drive = app.split("const openDrive")[1].split("const confirmTrip")[0]
     assert "waitForPreciseFix" in open_drive
     assert "setTripStart(null)" in open_drive
+    assert "onFix" in open_drive
     assert "userLocation" not in open_drive
-    assert "Location is approximate. Using the map center." in fmt
+    assert "Location is approximate. Using the map center." not in fmt
     assert "Finding your location." in fmt
+    assert "shouldFetchHits" in (ROOT / "frontend" / "src" / "SearchBox.jsx").read_text()
+    assert "pickedQuery" in (ROOT / "frontend" / "src" / "SearchBox.jsx").read_text()
+    assert "shouldFetchHits" in (ROOT / "frontend" / "src" / "searchQuery.js").read_text()
 
 
 def test_map_has_an_always_visible_locate_control():

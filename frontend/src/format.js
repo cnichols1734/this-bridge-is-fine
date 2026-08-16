@@ -153,7 +153,6 @@ export const COPY = {
   locate: "My location",
   locationDenied: "Location is off. Using the map center.",
   locationPreciseOff: "Precise location is unavailable.",
-  locationApproximate: "Location is approximate. Using the map center.",
   driveLocating: "Finding your location.",
   approachDismiss: "Dismiss",
 };
