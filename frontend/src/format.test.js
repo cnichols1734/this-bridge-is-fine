@@ -84,12 +84,11 @@ test("unknown official condition is not treated as Good", () => {
   assert.doesNotMatch(conditionClass({ condition: null }), /\bG\b/);
 });
 
-test("official colors are not a traffic light", () => {
+test("official G/F/P dots use the original Good green and Fair gold", () => {
   assert.equal(CONDITION_COLORS.P, "#b42318");
-  assert.notEqual(CONDITION_COLORS.G, "#5c7a52");
-  assert.notEqual(CONDITION_COLORS.F, "#c4a84a");
-  assert.match(CONDITION_COLORS.G, /^#[0-9a-f]{6}$/i);
-  assert.match(CONDITION_COLORS.F, /^#[0-9a-f]{6}$/i);
+  assert.equal(CONDITION_COLORS.G, "#5c7a52");
+  assert.equal(CONDITION_COLORS.F, "#c4a84a");
+  assert.equal(CONDITION_COLORS.U, "#c7c7cc");
 });
 
 test("user-facing strings stay dry and civic", () => {

@@ -48,10 +48,10 @@ def test_zoom_hint_matches_across_api_and_ui():
     assert "Zoom in to city scale to see structures." in fmt
 
 
-def test_css_drops_traffic_light_green():
+def test_css_official_dots_use_original_good_fair():
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
-    assert "#5c7a52" not in css
-    assert "#c4a84a" not in css
+    assert "--good: #5c7a52" in css
+    assert "--fair: #c4a84a" in css
     assert "--poor: #b42318" in css
     assert ".rating.is-poor" in css
     assert ".rating.is-low" not in css
