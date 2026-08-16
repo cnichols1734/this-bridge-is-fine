@@ -182,6 +182,68 @@ def _bbox_filter(query, bbox):
     )
 
 
+def _map_mode(zoom: float) -> str:
+    """City stays mixed. State fills Poor first. Continental is Poor only."""
+    if zoom >= Config.MIN_MAP_ZOOM:
+        return "mixed"
+    if zoom < Config.CONTINENTAL_MAP_ZOOM:
+        return "poor_only"
+    return "poor_first"
+
+
+def _fetch_map_bridges(
+    db: Session,
+    bbox,
+    *,
+    condition: str | None = None,
+    exclude_condition: str | None = None,
+    limit: int,
+):
+    """Bbox + optional condition + limit. Do not load the national table."""
+    query = _bbox_filter(db.query(Bridge), bbox)
+    if condition is not None:
+        query = query.filter(Bridge.bridge_condition == condition)
+    if exclude_condition is not None:
+        query = query.filter(Bridge.bridge_condition != exclude_condition)
+    return query.order_by(Bridge.unease_score.desc()).limit(limit).all()
+
+
+def _query_viewport_bridges(db: Session, bbox, zoom: float, cap: int):
+    """Return (rows, capped) for the map overlay."""
+    mode = _map_mode(zoom)
+    if mode == "mixed":
+        rows = _fetch_map_bridges(db, bbox, limit=cap + 1)
+        return rows[:cap], len(rows) > cap
+
+    poor = _fetch_map_bridges(db, bbox, condition="P", limit=cap + 1)
+    if mode == "poor_only" or len(poor) >= cap:
+        return poor[:cap], len(poor) > cap
+
+    remaining = cap - len(poor)
+    others = _fetch_map_bridges(
+        db, bbox, exclude_condition="P", limit=remaining + 1
+    )
+    return poor + others[:remaining], len(others) > remaining
+
+
+def _map_feature(bridge: Bridge) -> dict:
+    return {
+        "type": "Feature",
+        "id": _bridge_id(bridge),
+        "geometry": {
+            "type": "Point",
+            "coordinates": [bridge.lng, bridge.lat],
+        },
+        "properties": {
+            "id": _bridge_id(bridge),
+            "condition": bridge.bridge_condition,
+            "lowest": bridge.lowest_rating,
+            "score": _public_score(bridge.unease_score),
+            "status": bridge.status_code,
+        },
+    }
+
+
 def _radius_meters(radius_km: float, minimum_km: float, maximum_km: float) -> float:
     """Clamp a kilometer radius, then convert. Do not clamp after converting."""
     return max(minimum_km, min(float(radius_km), maximum_km)) * 1000.0
@@ -390,43 +452,12 @@ def create_app() -> Flask:
             zoom = float(request.args.get("zoom", 11))
         except ValueError:
             abort(400, "zoom must be a number")
-        if zoom < Config.MIN_MAP_ZOOM:
-            return jsonify(
-                {
-                    "type": "FeatureCollection",
-                    "features": [],
-                    "hint": "Zoom in to city scale to see structures.",
-                    "capped": False,
-                }
-            )
         db = _session()
         try:
-            rows = (
-                _bbox_filter(db.query(Bridge), bbox)
-                .order_by(Bridge.unease_score.desc())
-                .limit(Config.MAP_FEATURE_CAP + 1)
-                .all()
+            rows, capped = _query_viewport_bridges(
+                db, bbox, zoom, Config.MAP_FEATURE_CAP
             )
-            capped = len(rows) > Config.MAP_FEATURE_CAP
-            rows = rows[: Config.MAP_FEATURE_CAP]
-            features = [
-                {
-                    "type": "Feature",
-                    "id": _bridge_id(bridge),
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [bridge.lng, bridge.lat],
-                    },
-                    "properties": {
-                        "id": _bridge_id(bridge),
-                        "condition": bridge.bridge_condition,
-                        "lowest": bridge.lowest_rating,
-                        "score": _public_score(bridge.unease_score),
-                        "status": bridge.status_code,
-                    },
-                }
-                for bridge in rows
-            ]
+            features = [_map_feature(bridge) for bridge in rows]
             return jsonify(
                 {
                     "type": "FeatureCollection",

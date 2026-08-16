@@ -41,11 +41,13 @@ def test_user_facing_copy_is_dry():
     assert "★" not in (ROOT / "frontend" / "src" / "Detail.jsx").read_text()
 
 
-def test_zoom_hint_matches_across_api_and_ui():
+def test_low_zoom_does_not_claim_city_scale_is_required():
     api = (ROOT / "backend" / "api.py").read_text()
     fmt = (ROOT / "frontend" / "src" / "format.js").read_text()
-    assert "Zoom in to city scale to see structures." in api
-    assert "Zoom in to city scale to see structures." in fmt
+    lie = "Zoom in to city scale to see structures."
+    assert lie not in api
+    assert lie not in fmt
+    assert "No structures in this view." in fmt
 
 
 def test_css_official_dots_use_original_good_fair():

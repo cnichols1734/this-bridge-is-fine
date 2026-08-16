@@ -96,7 +96,7 @@ export const COPY = {
   rankNote:
     "A ranking from the worst inspector rating and daily traffic. Not an official grade.",
   ratingNote: "Inspector ratings, 0 to 9. Higher is better.",
-  zoomHint: "Zoom in to city scale to see structures.",
+  zoomHint: "No structures in this view.",
   emptyFilter: "No structures in view for the selected conditions.",
   emptyWorst: "No low scores in this view.",
   inventoryEmpty: "Inventory is not loaded.",
