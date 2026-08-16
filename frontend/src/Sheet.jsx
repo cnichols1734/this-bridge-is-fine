@@ -1,22 +1,17 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { detentHeightFor } from "./sheetDetents.js";
 
 const DETENTS = ["peek", "half", "full"];
 
-function viewportH() {
-  return window.visualViewport?.height || window.innerHeight;
+function viewportSize() {
+  return {
+    width: window.innerWidth,
+    height: window.visualViewport?.height || window.innerHeight,
+  };
 }
 
 export function detentHeight(detent, roomy = false) {
-  const h = viewportH();
-  const landscape = window.innerWidth > h && h <= 500;
-  if (detent === "full") return Math.round(h * (landscape ? 0.94 : 0.92));
-  if (detent === "half") return Math.round(h * (landscape ? 0.52 : 0.56));
-  if (roomy) {
-    if (landscape) return Math.min(340, Math.max(292, Math.round(h * 0.84)));
-    return Math.min(340, Math.max(248, Math.round(h * 0.4)));
-  }
-  if (landscape) return Math.min(96, Math.round(h * 0.26));
-  return Math.min(156, Math.round(h * 0.22));
+  return detentHeightFor(detent, { ...viewportSize(), roomy });
 }
 
 function nearestDetent(height, dismissible, roomy = false) {

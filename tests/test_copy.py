@@ -83,7 +83,7 @@ def test_css_official_dots_use_original_good_fair():
 
 def test_landscape_peek_keeps_trip_facts_visible():
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
-    sheet = (ROOT / "frontend" / "src" / "Sheet.jsx").read_text()
+    sheet = (ROOT / "frontend" / "src" / "sheetDetents.js").read_text()
     assert ".sheet-pulse:not(.trip-pulse) .pulse-copy" in css
     assert ".sheet .trip-pulse .pulse-copy" in css
     assert ".trip-worst" in css
