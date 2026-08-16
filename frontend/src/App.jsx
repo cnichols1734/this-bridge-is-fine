@@ -70,7 +70,7 @@ export default function App() {
   const [hint, setHint] = useState(null);
   const [error, setError] = useState(null);
   const [stale, setStale] = useState(null);
-  const [sheet, setSheet] = useState("peek");
+  const [sheet, setSheet] = useState(() => (permalink.id ? "full" : "peek"));
   const [meta, setMeta] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [away, setAway] = useState(false);
@@ -145,7 +145,7 @@ export default function App() {
     const bottom = mobile ? detentHeight(detent) + 12 : 40;
     const camera = {
       padding: { top: mobile ? 88 : 24, bottom, left: 12, right: 12 },
-      duration: 420,
+      duration: 200,
     };
     if (bridge) camera.center = [bridge.lng, bridge.lat];
     map.easeTo(camera);
@@ -244,9 +244,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!permalink.id) return;
-    fetchBridge(permalink.id).then(setDetail).catch(() => {});
-  }, []);
+    if (!permalink.id) return undefined;
+    let cancelled = false;
+    fetchBridge(permalink.id)
+      .then((bridge) => {
+        if (cancelled) return;
+        setDetail(bridge);
+        padMap("full", bridge);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [padMap]);
 
   useEffect(() => {
     const onKey = (event) => {
@@ -258,6 +268,7 @@ export default function App() {
 
   const onReady = (map) => {
     mapRef.current = map;
+    if (permalink.id) padMap("full");
     if (!permalink.lat && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -463,26 +474,28 @@ export default function App() {
               <p className="pulse-copy">{pulseCopy}</p>
             </div>
             {sheet !== "peek" ? (
-              <div className="section-head">
-                <div className="section-label">{COPY.lowestScores}</div>
-                <RankNote />
-              </div>
+              <>
+                <div className="section-head">
+                  <div className="section-label">{COPY.lowestScores}</div>
+                  <RankNote />
+                </div>
+                <div className="list">
+                  {shownWorst.length === 0 ? (
+                    <div className="empty">{COPY.emptyWorst}</div>
+                  ) : (
+                    shownWorst.map((bridge) => (
+                      <Row
+                        key={bridge.id}
+                        bridge={bridge}
+                        selected={bridge.id === selectedId}
+                        onSelect={select}
+                        showScore
+                      />
+                    ))
+                  )}
+                </div>
+              </>
             ) : null}
-            <div className="list">
-              {shownWorst.length === 0 ? (
-                <div className="empty">{COPY.emptyWorst}</div>
-              ) : (
-                (sheet === "peek" ? shownWorst.slice(0, 2) : shownWorst).map((bridge) => (
-                  <Row
-                    key={bridge.id}
-                    bridge={bridge}
-                    selected={bridge.id === selectedId}
-                    onSelect={select}
-                    showScore
-                  />
-                ))
-              )}
-            </div>
           </>
         )}
       </Sheet>

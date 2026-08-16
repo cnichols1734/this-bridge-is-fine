@@ -55,3 +55,13 @@ def test_css_drops_traffic_light_green():
     assert "--poor: #b42318" in css
     assert ".rating.is-poor" in css
     assert ".rating.is-low" not in css
+
+
+def test_overlays_use_hairlines_not_drop_shadows():
+    css = (ROOT / "frontend" / "src" / "index.css").read_text()
+    assert ".search-hits" in css
+    assert ".map-popup" in css
+    assert "box-shadow: 0 6px 24px" not in css
+    assert "box-shadow: 0 8px 24px" not in css
+    assert "max-width: 360px" not in css
+    assert "max-width: 480px" in css
