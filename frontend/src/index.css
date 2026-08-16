@@ -170,6 +170,25 @@ button {
   gap: 8px;
 }
 
+.trip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trip-back {
+  font-size: 0.8125rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+  color: #0071e3;
+  padding: 4px 0;
+}
+
+.trip-back:hover {
+  color: #0077ed;
+}
+
 .trip-fields {
   display: flex;
   flex-direction: column;
@@ -198,6 +217,7 @@ button {
 
 .trip-drop,
 .trip-clear,
+.trip-back,
 .trip-use {
   font-size: 0.8125rem;
   font-weight: 510;
@@ -205,13 +225,15 @@ button {
 }
 
 .trip-drop,
-.trip-clear {
+.trip-clear,
+.trip-back {
   color: #0071e3;
   padding: 4px 0;
 }
 
 .trip-drop:hover,
 .trip-clear:hover,
+.trip-back:hover,
 .trip-use:hover {
   color: #0077ed;
 }
@@ -220,10 +242,15 @@ button {
   color: var(--ink);
 }
 
-.trip-hint {
+.trip-hint,
+.trip-error {
   margin: 0;
   color: var(--mute);
   font-size: 0.75rem;
+}
+
+.trip-error {
+  color: var(--ink);
 }
 
 .trip-use {
@@ -261,6 +288,7 @@ button {
 .locate:focus-visible,
 .trip-drop:focus-visible,
 .trip-clear:focus-visible,
+.trip-back:focus-visible,
 .trip-use:focus-visible,
 .row:focus-visible,
 .basemap button:focus-visible,
@@ -1102,6 +1130,62 @@ button {
     border: 1px solid var(--line);
   }
 
+  .app.has-trip .map-brand-row {
+    display: none;
+  }
+
+  .app.has-trip .map-search {
+    right: 12px;
+  }
+
+  .app.has-trip .trip-bar {
+    gap: 6px;
+    padding: 8px 10px 8px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+  }
+
+  .app.has-trip .trip-head {
+    min-height: 28px;
+  }
+
+  .app.has-trip .trip-fields {
+    gap: 4px;
+  }
+
+  .app.has-trip .trip-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .app.has-trip .trip-field span {
+    flex: 0 0 2.75rem;
+    font-size: 0.6875rem;
+  }
+
+  .app.has-trip .trip-field .search {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .app.has-trip .map-search .search input {
+    height: 36px;
+  }
+
+  .app.has-trip .trip-actions {
+    min-height: 24px;
+  }
+
+  .app.has-trip .trip-hint,
+  .app.has-trip .trip-error {
+    font-size: 0.6875rem;
+  }
+
+  .app.has-trip .search-status {
+    display: none;
+  }
+
   .search-hits {
     border: 1px solid var(--line);
     box-shadow: none;
@@ -1361,12 +1445,33 @@ button {
     bottom: calc(var(--sheet-h) + 8px);
   }
 
-  .sheet-pulse .pulse-copy {
+  .sheet-pulse:not(.trip-pulse) .pulse-copy {
     display: none;
   }
 
   .sheet-pulse .pulse-number {
     font-size: 1.375rem;
+  }
+
+  .sheet .trip-pulse .pulse-label {
+    display: none;
+  }
+
+  .sheet .trip-pulse .pulse-number {
+    font-size: 1.25rem;
+    margin-top: 0;
+  }
+
+  .sheet .trip-pulse .pulse-copy,
+  .sheet .trip-status .pulse-copy {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+  }
+
+  .sheet .trip-use {
+    height: 36px;
+    margin-top: 6px;
   }
 
   .sheet.peek .list,

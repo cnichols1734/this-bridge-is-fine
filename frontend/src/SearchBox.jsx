@@ -7,6 +7,8 @@ export default function SearchBox({
   placeholder = "City or ZIP",
   label = "Search city or ZIP",
   value,
+  onFocus,
+  onOpenChange,
 }) {
   const [q, setQ] = useState(value || "");
 
@@ -15,6 +17,14 @@ export default function SearchBox({
   }, [value]);
   const [hits, setHits] = useState([]);
   const [open, setOpen] = useState(false);
+  const openRef = useRef(false);
+
+  const setHitsOpen = (next) => {
+    if (openRef.current === next) return;
+    openRef.current = next;
+    setOpen(next);
+    onOpenChange?.(next);
+  };
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const box = useRef(null);
@@ -23,7 +33,7 @@ export default function SearchBox({
     const query = q.trim();
     if (query.length < 2) {
       setHits([]);
-      setOpen(false);
+      setHitsOpen(false);
       return undefined;
     }
     const timer = setTimeout(() => {
@@ -32,11 +42,11 @@ export default function SearchBox({
         .then((results) => {
           setHits(results);
           setActive(0);
-          setOpen(results.length > 0);
+          setHitsOpen(results.length > 0);
         })
         .catch(() => {
           setHits([]);
-          setOpen(false);
+          setHitsOpen(false);
         })
         .finally(() => setBusy(false));
     }, 320);
@@ -44,9 +54,15 @@ export default function SearchBox({
   }, [q, near]);
 
   useEffect(() => {
+    return () => {
+      if (openRef.current) onOpenChange?.(false);
+    };
+  }, []);
+
+  useEffect(() => {
     const onDoc = (event) => {
       if (box.current && !box.current.contains(event.target)) {
-        setOpen(false);
+        setHitsOpen(false);
       }
     };
     document.addEventListener("pointerdown", onDoc);
@@ -56,7 +72,7 @@ export default function SearchBox({
   const choose = (hit) => {
     if (!hit) return;
     setQ(hit.label);
-    setOpen(false);
+    setHitsOpen(false);
     onPick(hit);
   };
 
@@ -71,7 +87,10 @@ export default function SearchBox({
         aria-label={label}
         value={q}
         onChange={(event) => setQ(event.target.value)}
-        onFocus={() => hits.length && setOpen(true)}
+        onFocus={() => {
+          onFocus?.();
+          if (hits.length) setHitsOpen(true);
+        }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault();
@@ -83,7 +102,11 @@ export default function SearchBox({
             event.preventDefault();
             choose(hits[active]);
           } else if (event.key === "Escape") {
-            setOpen(false);
+            if (open) {
+              event.preventDefault();
+              event.stopPropagation();
+              setHitsOpen(false);
+            }
           }
         }}
       />
@@ -95,7 +118,7 @@ export default function SearchBox({
           onClick={() => {
             setQ("");
             setHits([]);
-            setOpen(false);
+            setHitsOpen(false);
           }}
         >
           <span aria-hidden="true">×</span>

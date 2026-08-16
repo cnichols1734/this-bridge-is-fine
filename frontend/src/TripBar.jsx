@@ -7,13 +7,26 @@ export default function TripBar({
   near,
   dropping,
   busy,
+  error,
   onPickStart,
   onPickEnd,
+  onFocusStart,
+  onFocusEnd,
+  onOpenChange,
   onDrop,
+  onBack,
   onClear,
 }) {
   return (
     <div className="trip-bar">
+      <div className="trip-head">
+        <button type="button" className="trip-back" onClick={onBack}>
+          {COPY.driveBack}
+        </button>
+        <button type="button" className="trip-clear" onClick={onClear}>
+          {COPY.driveClear}
+        </button>
+      </div>
       <div className="trip-fields">
         <label className="trip-field">
           <span>{COPY.driveStart}</span>
@@ -22,6 +35,8 @@ export default function TripBar({
             label={COPY.driveStart}
             value={start?.label || ""}
             near={near}
+            onFocus={onFocusStart}
+            onOpenChange={onOpenChange}
             onPick={(hit) =>
               onPickStart({ lng: hit.lng, lat: hit.lat, label: hit.label })
             }
@@ -34,6 +49,8 @@ export default function TripBar({
             label={COPY.driveEnd}
             value={end?.label || ""}
             near={near}
+            onFocus={onFocusEnd}
+            onOpenChange={onOpenChange}
             onPick={(hit) =>
               onPickEnd({ lng: hit.lng, lat: hit.lat, label: hit.label })
             }
@@ -49,12 +66,10 @@ export default function TripBar({
         >
           {COPY.driveDrop}
         </button>
-        <button type="button" className="trip-clear" onClick={onClear}>
-          {COPY.driveClear}
-        </button>
       </div>
-      {dropping ? <p className="trip-hint">{COPY.driveDropHint}</p> : null}
-      {busy ? <p className="trip-hint">{COPY.driveLooking}</p> : null}
+      {error ? <p className="trip-error">{error}</p> : null}
+      {dropping && !error ? <p className="trip-hint">{COPY.driveDropHint}</p> : null}
+      {busy && !error ? <p className="trip-hint">{COPY.driveLooking}</p> : null}
     </div>
   );
 }

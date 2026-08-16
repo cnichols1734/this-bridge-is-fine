@@ -11,6 +11,7 @@ import {
   formatDriveDistance,
   formatDriveTime,
   formatEta,
+  nextDropSlot,
   officialCondition,
   ratingBand,
   ratingClass,
@@ -104,7 +105,18 @@ test("user-facing strings stay dry and civic", () => {
   assert.match(COPY.poorDefinition, /scored 4 or below/);
   assert.match(COPY.rankNote, /Not an official grade/);
   assert.equal(COPY.driveUse, "Use this drive");
+  assert.equal(COPY.driveBack, "Back");
+  assert.equal(COPY.driveNone, "No driving route for these points.");
+  assert.equal(COPY.driveDown, "Routing is unavailable.");
   assert.doesNotMatch(COPY.drive, /!/);
+});
+
+test("drop points fill the next empty end and do not imply a wipe", () => {
+  assert.equal(nextDropSlot(null, null, null), "start");
+  assert.equal(nextDropSlot({ label: "A" }, null, null), "end");
+  assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, null), "end");
+  assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, "start"), "start");
+  assert.equal(nextDropSlot(null, { label: "B" }, "end"), "end");
 });
 
 test("drive time, distance, and ETA stay precise", () => {

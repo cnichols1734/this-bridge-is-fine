@@ -16,6 +16,7 @@ import {
   formatDriveDistance,
   formatDriveTime,
   formatEta,
+  nextDropSlot,
   officialCondition,
   readConditionFilter,
   readPermalink,
@@ -61,28 +62,34 @@ function Row({ bridge, selected, onSelect, showScore, trip }) {
   );
 }
 
+function TripFacts({ route, summary }) {
+  const bridges = summary?.bridges ?? 0;
+  const poor = summary?.poor ?? 0;
+  return (
+    <p className="pulse-copy">
+      {formatEta(route.duration_s)}
+      {` · ${formatDriveDistance(route.distance_m)}`}
+      {` · ${bridges.toLocaleString()} ${bridges === 1 ? "bridge" : "bridges"}`}
+      {poor > 0 ? (
+        <>
+          {" · "}
+          <span className="cond cond-P">{poor} Poor</span>
+        </>
+      ) : (
+        " · No Poor"
+      )}
+    </p>
+  );
+}
+
 function TripPulse({ payload, confirmed, onConfirm, onOpen }) {
   if (!payload?.route) return null;
   const { route, summary } = payload;
-  const bridges = summary?.bridges ?? 0;
-  const poor = summary?.poor ?? 0;
   return (
     <div className="sheet-pulse sheet-drag trip-pulse" onClick={onOpen}>
       <div className="pulse-label">{COPY.drive}</div>
       <div className="pulse-number">{formatDriveTime(route.duration_s)}</div>
-      <p className="pulse-copy">
-        {formatEta(route.duration_s)}
-        {` · ${formatDriveDistance(route.distance_m)}`}
-        {` · ${bridges.toLocaleString()} ${bridges === 1 ? "bridge" : "bridges"}`}
-        {poor > 0 ? (
-          <>
-            {" · "}
-            <span className="cond cond-P">{poor} Poor</span>
-          </>
-        ) : (
-          " · No Poor"
-        )}
-      </p>
+      <TripFacts route={route} summary={summary} />
       {!confirmed ? (
         <button
           type="button"
@@ -159,9 +166,12 @@ export default function App() {
   const [tripBusy, setTripBusy] = useState(false);
   const [tripError, setTripError] = useState(null);
   const [dropMode, setDropMode] = useState(false);
+  const [dropEditing, setDropEditing] = useState(null);
   const [lastPlace, setLastPlace] = useState(null);
   const mapRef = useRef(null);
   const tripKey = useRef("");
+  const typeaheadOpen = useRef(false);
+  const typeaheadCount = useRef(0);
 
   const toggleCondition = useCallback((code) => {
     setVisibleConditions((current) => {
@@ -335,6 +345,7 @@ export default function App() {
     setTripBusy(false);
     setTripError(null);
     setDropMode(false);
+    setDropEditing(null);
     setSheet("peek");
   }, []);
 
@@ -351,9 +362,27 @@ export default function App() {
     setTrip(null);
     setTripDraft(null);
     setTripError(null);
+    setDropMode(false);
+    setDropEditing(null);
     setTripOpen(true);
     setSheet("peek");
-  }, [defaultStart, lastPlace]);
+    if (!userLocation && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const next = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+          setUserLocation(next);
+          setTripStart((current) => {
+            if (!current || current.label === COPY.driveCenter) {
+              return { ...next, label: COPY.driveHere };
+            }
+            return current;
+          });
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, [defaultStart, lastPlace, userLocation]);
 
   const confirmTrip = useCallback(() => {
     if (!tripDraft) return;
@@ -369,16 +398,18 @@ export default function App() {
       lat: point.lat,
       label: `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`,
     };
-    if (!tripStart) {
+    const slot = nextDropSlot(tripStart, tripEnd, dropEditing);
+    tripKey.current = "";
+    setTrip(null);
+    setTripDraft(null);
+    if (slot === "start") {
       setTripStart(labeled);
+      if (tripEnd) setDropMode(false);
       return;
     }
     setTripEnd(labeled);
     setDropMode(false);
-    tripKey.current = "";
-    setTrip(null);
-    setTripDraft(null);
-  }, [tripStart]);
+  }, [tripStart, tripEnd, dropEditing]);
 
   useEffect(() => {
     fetchMeta().then(setMeta).catch(() => {});
@@ -409,6 +440,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (event) => {
       if (event.key !== "Escape") return;
+      if (typeaheadOpen.current) return;
       if (selectedId) {
         closeDetail();
         return;
@@ -500,7 +532,7 @@ export default function App() {
     : COPY.pulseMove;
   const tripPayload = trip || tripDraft;
   const tripList = trip?.bridges || [];
-  const roomySheet = Boolean(tripOpen && tripPayload && !detail);
+  const roomySheet = Boolean(tripOpen && (tripPayload || tripError) && !detail);
   const searchNear = userLocation || center;
 
   const tripComposer = tripOpen ? (
@@ -510,6 +542,14 @@ export default function App() {
       near={searchNear}
       dropping={dropMode}
       busy={tripBusy}
+      error={tripError}
+      onFocusStart={() => setDropEditing("start")}
+      onFocusEnd={() => setDropEditing("end")}
+      onOpenChange={(open) => {
+        typeaheadCount.current += open ? 1 : -1;
+        if (typeaheadCount.current < 0) typeaheadCount.current = 0;
+        typeaheadOpen.current = typeaheadCount.current > 0;
+      }}
       onPickStart={(point) => {
         setTripStart(point);
         tripKey.current = "";
@@ -522,17 +562,8 @@ export default function App() {
         setTrip(null);
         setTripDraft(null);
       }}
-      onDrop={() => {
-        setDropMode((on) => {
-          if (on) return false;
-          tripKey.current = "";
-          setTripStart(null);
-          setTripEnd(null);
-          setTrip(null);
-          setTripDraft(null);
-          return true;
-        });
-      }}
+      onDrop={() => setDropMode((on) => !on)}
+      onBack={clearTrip}
       onClear={clearTrip}
     />
   ) : null;
@@ -804,6 +835,13 @@ export default function App() {
               </>
             ) : null}
           </>
+        ) : tripOpen && (tripError || tripBusy) ? (
+          <div className="sheet-pulse sheet-drag trip-pulse trip-status">
+            <div className="pulse-label">{COPY.drive}</div>
+            <p className={`pulse-copy${tripError ? " trip-error" : ""}`}>
+              {tripError || COPY.driveLooking}
+            </p>
+          </div>
         ) : (
           <>
             <div className="sheet-pulse sheet-drag" onClick={() => setSheet("half")}>

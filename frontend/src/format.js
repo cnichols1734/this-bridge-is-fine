@@ -138,8 +138,9 @@ export const COPY = {
   driveHere: "Your location",
   driveCenter: "Map center",
   driveDrop: "Drop points on the map",
-  driveDropHint: "Tap the start, then the end.",
+  driveDropHint: "Tap the map to set the next point.",
   driveUse: "Use this drive",
+  driveBack: "Back",
   driveClear: "Clear",
   driveLooking: "Looking up the route.",
   driveNone: "No driving route for these points.",
@@ -209,6 +210,13 @@ export function ratingIsPoor(value) {
 /** Component bar class. Poor-red only when the rating itself is Poor. */
 export function ratingClass(value) {
   return ratingIsPoor(value) ? "rating is-poor" : "rating";
+}
+
+/** Which trip end a map tap should set. Never clears the other end. */
+export function nextDropSlot(start, end, editing) {
+  if (editing === "start" || editing === "end") return editing;
+  if (!start) return "start";
+  return "end";
 }
 
 export function kmBetween(a, b) {

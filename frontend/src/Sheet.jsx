@@ -12,7 +12,7 @@ export function detentHeight(detent, roomy = false) {
   if (detent === "full") return Math.round(h * (landscape ? 0.94 : 0.92));
   if (detent === "half") return Math.round(h * (landscape ? 0.52 : 0.56));
   if (roomy) {
-    if (landscape) return Math.min(128, Math.round(h * 0.34));
+    if (landscape) return Math.min(188, Math.max(156, Math.round(h * 0.46)));
     return Math.round(h * 0.25);
   }
   if (landscape) return Math.min(96, Math.round(h * 0.26));
