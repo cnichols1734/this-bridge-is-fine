@@ -113,7 +113,8 @@ test("drive time, distance, and ETA stay precise", () => {
   assert.equal(formatDriveTime(72 * 60), "1 hr 12 min");
   assert.equal(formatDriveTime(120 * 60), "2 hr");
   assert.equal(formatDriveDistance(80), "262 ft");
-  assert.equal(formatDriveDistance(22116.6), "13.7 mi");
+  assert.equal(formatDriveDistance(8851), "5.5 mi");
+  assert.equal(formatDriveDistance(22116.6), "14 mi");
   assert.equal(formatDriveDistance(238000), "148 mi");
   assert.match(
     formatEta(90 * 60, new Date("2026-08-16T15:00:00")),

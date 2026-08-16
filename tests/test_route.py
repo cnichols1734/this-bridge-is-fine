@@ -4,6 +4,7 @@ import backend.api as api
 from backend.api import create_app
 from backend.config import Config
 from backend.route import (
+    osrm_route_url,
     parse_lonlat,
     route_summary,
     select_route_bridges,
@@ -20,10 +21,17 @@ def _row(**kw):
     return SimpleNamespace(**defaults)
 
 
+def test_osrm_url_uses_configured_base():
+    url = osrm_route_url((-87.63, 41.88), (-87.68, 42.05), base="https://router.example")
+    assert url.startswith("https://router.example/route/v1/driving/")
+    assert "geometries=geojson" in url
+    assert "steps=false" in url
+
+
 def test_parse_lonlat():
     assert parse_lonlat("-87.63,41.88") == (-87.63, 41.88)
     assert parse_lonlat("  -87.63 , 41.88 ") == (-87.63, 41.88)
-    assert parse_lonlat("91,0") is None
+    assert parse_lonlat("181,0") is None
     assert parse_lonlat("0,91") is None
     assert parse_lonlat("1") is None
     assert parse_lonlat("a,b") is None

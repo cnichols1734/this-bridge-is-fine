@@ -1370,8 +1370,7 @@ button {
   }
 
   .sheet.peek .list,
-  .sheet.peek .empty,
-  .sheet.peek .trip-use {
+  .sheet.peek .empty {
     display: none;
   }
 
