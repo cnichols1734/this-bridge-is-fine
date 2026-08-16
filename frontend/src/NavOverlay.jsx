@@ -12,16 +12,24 @@ export function DriveButton({ onClick, className = "" }) {
   );
 }
 
-export function NavBanner({ banner, note }) {
-  if (!banner && !note) return null;
+export function NavBanner({ banner, note, onExit }) {
   return (
     <div className="nav-banner" role="status">
-      {banner ? (
-        <>
-          <div className="nav-turn">{banner.text}</div>
-          <div className="nav-dist">{formatDriveDistance(banner.distance_m)}</div>
-        </>
-      ) : null}
+      <div className="nav-banner-row">
+        <button type="button" className="nav-exit" onClick={onExit}>
+          {COPY.driveBack}
+        </button>
+        <div className="nav-banner-copy">
+          {banner ? (
+            <>
+              <div className="nav-turn">{banner.text}</div>
+              <div className="nav-dist">{formatDriveDistance(banner.distance_m)}</div>
+            </>
+          ) : (
+            <div className="nav-turn">{COPY.driveLooking}</div>
+          )}
+        </div>
+      </div>
       {note ? <p className="nav-note">{note}</p> : null}
     </div>
   );

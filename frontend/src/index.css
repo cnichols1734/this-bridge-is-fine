@@ -179,9 +179,35 @@ button {
 }
 
 .nav-banner {
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: var(--bg);
   border: 1px solid var(--line);
+}
+
+.nav-banner-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.nav-exit {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+  color: #0071e3;
+}
+
+.nav-exit:hover {
+  color: #0077ed;
+}
+
+.nav-banner-copy {
+  min-width: 0;
+  flex: 1;
+  padding-top: 2px;
 }
 
 .nav-turn {
@@ -415,6 +441,7 @@ button {
   cursor: crosshair;
 }
 
+.nav-exit:focus-visible,
 .drive-btn:focus-visible,
 .locate:focus-visible,
 .trip-drop:focus-visible,
@@ -1603,25 +1630,28 @@ button {
   }
 
   .sheet .trip-pulse .pulse-number {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     margin-top: 0;
   }
 
   .sheet .trip-pulse .pulse-copy,
   .sheet .trip-status .pulse-copy {
     display: block;
-    margin-top: 4px;
+    margin-top: 2px;
     font-size: 0.75rem;
+    line-height: 1.35;
   }
 
   .sheet .trip-use {
     height: 36px;
     margin-top: 6px;
+    flex-shrink: 0;
   }
 
   .sheet .trip-worst {
     display: flex;
-    margin-top: 6px;
+    flex-shrink: 0;
+    margin-top: 4px;
   }
 
   .sheet .trip-worst-label {
@@ -1629,8 +1659,8 @@ button {
   }
 
   .sheet .trip-worst-row {
-    padding: 6px 0;
-    min-height: 32px;
+    padding: 5px 0;
+    min-height: 28px;
   }
 
   .sheet.peek .list,
@@ -1638,8 +1668,17 @@ button {
     display: none;
   }
 
+  .sheet.peek .sheet-body {
+    overflow: visible;
+  }
+
+  .sheet.peek .trip-pulse {
+    overflow: visible;
+    padding-bottom: 8px;
+  }
+
   .sheet.peek .sheet-pulse {
-    padding-bottom: 4px;
+    padding-bottom: 8px;
   }
 
   .sheet .detail-title,

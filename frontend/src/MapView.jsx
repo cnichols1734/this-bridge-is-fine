@@ -433,7 +433,7 @@ export default function MapView({
     if (!map) return;
     if (!followOn || !follow) {
       if (map.getPitch() > 0.5 || Math.abs(map.getBearing()) > 0.5) {
-        map.easeTo({ pitch: 0, bearing: 0, duration: 400 });
+        map.easeTo({ pitch: 0, bearing: 0, duration: 220 });
       }
       return;
     }
@@ -442,7 +442,8 @@ export default function MapView({
       zoom: Math.max(map.getZoom(), 15.4),
       bearing: Number.isFinite(follow.heading) ? follow.heading : map.getBearing(),
       pitch: 48,
-      duration: 900,
+      duration: 260,
+      easing: (t) => 1 - (1 - t) * (1 - t),
       essential: true,
     });
   }, [follow, followOn]);

@@ -264,12 +264,13 @@ def extract_steps(osrm_route: dict) -> list[dict[str, Any]]:
 def filter_on_drive(bridges: list, route_roads: list[str]) -> list:
     """Keep structures whose facility is a road the route travels.
 
-    If OSRM returned no usable names, keep the spatial set — there is nothing
-    to match. A feature_crossed match without a facility match is going under.
+    No usable OSRM names means an empty set — not the 150 m buffer. An
+    overpass you go under shares the same 2D crossing as the surface road,
+    so a spatial fallback resurrects I-90-over-Main-Street.
     """
     usable = [road for road in route_roads if road_keys(road)]
     if not usable:
-        return list(bridges)
+        return []
     return [
         bridge
         for bridge in bridges

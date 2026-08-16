@@ -605,7 +605,8 @@ export default function App() {
     ? `${stats.poor.toLocaleString()} Poor of ${stats.total.toLocaleString()} in view. ${COPY.poorDefinition}`
     : COPY.pulseMove;
   const tripPayload = trip || tripDraft;
-  const tripList = trip?.bridges || [];
+  const routeOnMap = Boolean(tripPayload?.route);
+  const tripList = routeOnMap ? tripPayload.bridges || [] : [];
   const tripWorst = tripPayload
     ? tripPayload.worst || pickWorstOnDrive(tripPayload.bridges, 3)
     : [];
@@ -760,11 +761,11 @@ export default function App() {
         ) : null}
         <div className="section-head">
           <div className="section-label">
-            {trip ? COPY.driveBridges : COPY.nearest}
+            {routeOnMap ? COPY.driveBridges : COPY.nearest}
           </div>
         </div>
         <div className="list">
-          {trip ? (
+          {routeOnMap ? (
             tripList.length === 0 ? (
               <div className="empty">{COPY.driveEmpty}</div>
             ) : (
@@ -823,7 +824,7 @@ export default function App() {
         />
         <div className="map-search">
           {navigating ? (
-            <NavBanner banner={banner} note={navNote} />
+            <NavBanner banner={banner} note={navNote} onExit={clearTrip} />
           ) : (
             <>
               <div className="map-brand-row">
@@ -949,12 +950,12 @@ export default function App() {
         )}
         <div className="section-head">
           <div className="section-label">
-            {trip ? COPY.driveBridges : COPY.lowestScores}
+            {routeOnMap ? COPY.driveBridges : COPY.lowestScores}
           </div>
-          {trip ? null : <RankNote />}
+          {routeOnMap ? null : <RankNote />}
         </div>
         <div className="list">
-          {trip ? (
+          {routeOnMap ? (
             tripList.length === 0 ? (
               <div className="empty">{COPY.driveEmpty}</div>
             ) : (
@@ -1010,7 +1011,7 @@ export default function App() {
               selectedId={selectedId}
               onSelect={select}
             />
-            {sheet !== "peek" && trip ? (
+            {sheet !== "peek" && routeOnMap ? (
               <>
                 <div className="section-head">
                   <div className="section-label">{COPY.driveBridges}</div>

@@ -163,10 +163,16 @@ def test_going_under_an_overpass_is_not_on_the_drive():
     assert [row.facility_carried for row in kept] == ["MAIN STREET"]
 
 
-def test_no_route_names_keeps_the_spatial_set():
-    rows = [_row(facility_carried="LOCAL ROAD"), _row(facility_carried="IH 45")]
-    assert filter_on_drive(rows, []) == rows
-    assert filter_on_drive(rows, ["", " "]) == rows
+def test_nameless_osrm_does_not_resurrect_overpasses():
+    """No road names must not fall back to the 150 m set.
+
+    I-90 over Main Street sits on the same 2D point as the surface road.
+    A spatial fallback would paint the overpass you go under.
+    """
+    overpass = _row(facility_carried="INTERSTATE 90", feature_crossed="MAIN ST")
+    span = _row(facility_carried="MAIN STREET", feature_crossed="CHICAGO RIVER")
+    assert filter_on_drive([overpass, span], []) == []
+    assert filter_on_drive([overpass, span], ["", " "]) == []
 
 
 def test_collect_route_roads_reads_name_and_ref():
@@ -345,7 +351,20 @@ def test_drive_lists_poor_first_and_keeps_full_counts(monkeypatch):
         ),
     ]
     monkeypatch.setattr(Config, "ROUTE_LIST_CAP", 1)
-    payload = _client(monkeypatch, matches=matches).get(
+    payload = _client(
+        monkeypatch,
+        matches=matches,
+        route={
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[-87.63, 41.88], [-87.68, 42.05]],
+            },
+            "distance_m": 22116.6,
+            "duration_s": 1574.1,
+            "steps": [],
+            "roads": ["Interstate 90", "US 41"],
+        },
+    ).get(
         "/api/drive?from=-87.63,41.88&to=-87.68,42.05"
     ).get_json()
     assert payload["summary"]["bridges"] == 2
@@ -428,6 +447,50 @@ def test_drive_api_keeps_on_route_spans_not_overpasses(monkeypatch):
     assert payload["summary"]["bridges"] == 1
     assert payload["summary"]["poor"] == 0
     assert payload["worst"][0]["id"] == "48-ON"
+
+
+def test_drive_api_nameless_osrm_drops_the_overpass(monkeypatch):
+    matches = [
+        (
+            _api_bridge(
+                id=1,
+                structure_number="I90",
+                facility_carried="INTERSTATE 90",
+                feature_crossed="MAIN ST",
+                bridge_condition="P",
+                unease_score=50,
+            ),
+            4.0,
+        ),
+        (
+            _api_bridge(
+                id=2,
+                structure_number="MAIN",
+                facility_carried="MAIN STREET",
+                feature_crossed="CHICAGO RIVER",
+                bridge_condition="G",
+                unease_score=8,
+            ),
+            6.0,
+        ),
+    ]
+    route = {
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[-87.63, 41.88], [-87.62, 41.89]],
+        },
+        "distance_m": 400,
+        "duration_s": 40,
+        "steps": [],
+        "roads": [],
+    }
+    payload = _client(monkeypatch, route=route, matches=matches).get(
+        "/api/drive?from=-87.63,41.88&to=-87.62,41.89"
+    ).get_json()
+    assert payload["bridges"] == []
+    assert payload["worst"] == []
+    assert payload["summary"]["bridges"] == 0
+    assert all("I90" not in item["id"] for item in payload["bridges"])
 
 
 def test_drive_maps_router_errors(monkeypatch):

@@ -83,10 +83,37 @@ def test_css_official_dots_use_original_good_fair():
 
 def test_landscape_peek_keeps_trip_facts_visible():
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
+    sheet = (ROOT / "frontend" / "src" / "Sheet.jsx").read_text()
     assert ".sheet-pulse:not(.trip-pulse) .pulse-copy" in css
     assert ".sheet .trip-pulse .pulse-copy" in css
     assert ".trip-worst" in css
     assert ".sheet.peek .trip-worst" not in css
+    assert ".sheet.peek .sheet-body" in css
+    assert "overflow: visible" in css
+    assert "Math.max(292" in sheet
+
+
+def test_nav_chrome_has_a_labeled_exit():
+    nav = (ROOT / "frontend" / "src" / "NavOverlay.jsx").read_text()
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    css = (ROOT / "frontend" / "src" / "index.css").read_text()
+    assert "nav-exit" in nav
+    assert "driveBack" in nav
+    assert "onExit={clearTrip}" in app
+    assert ".nav-exit" in css
+
+
+def test_preview_list_matches_route_pins():
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    assert "const routeOnMap = Boolean(tripPayload?.route)" in app
+    assert "routeOnMap ? tripPayload.bridges" in app
+    assert "{routeOnMap ? COPY.driveBridges : COPY.nearest}" in app
+
+
+def test_follow_camera_is_snappy():
+    view = (ROOT / "frontend" / "src" / "MapView.jsx").read_text()
+    assert "duration: 260" in view
+    assert "duration: 900" not in view
 
 
 def test_drive_is_a_real_button():
