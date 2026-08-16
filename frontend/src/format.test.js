@@ -8,6 +8,9 @@ import {
   RATING_NOTE,
   conditionClass,
   conditionVisible,
+  formatDriveDistance,
+  formatDriveTime,
+  formatEta,
   officialCondition,
   ratingBand,
   ratingClass,
@@ -100,4 +103,20 @@ test("user-facing strings stay dry and civic", () => {
   assert.doesNotMatch(blob, /★/);
   assert.match(COPY.poorDefinition, /scored 4 or below/);
   assert.match(COPY.rankNote, /Not an official grade/);
+  assert.equal(COPY.driveUse, "Use this drive");
+  assert.doesNotMatch(COPY.drive, /!/);
+});
+
+test("drive time, distance, and ETA stay precise", () => {
+  assert.equal(formatDriveTime(20), "Under 1 min");
+  assert.equal(formatDriveTime(12 * 60), "12 min");
+  assert.equal(formatDriveTime(72 * 60), "1 hr 12 min");
+  assert.equal(formatDriveTime(120 * 60), "2 hr");
+  assert.equal(formatDriveDistance(80), "262 ft");
+  assert.equal(formatDriveDistance(22116.6), "13.7 mi");
+  assert.equal(formatDriveDistance(238000), "148 mi");
+  assert.match(
+    formatEta(90 * 60, new Date("2026-08-16T15:00:00")),
+    /4:30/
+  );
 });

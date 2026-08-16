@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import requests
@@ -12,6 +13,14 @@ from backend.db import get_session, init_db
 from backend.ingest import NBI_STATE_CODES
 from backend.lookups import CONDITION_WORDS, band_label, condition_word
 from backend.models import Bridge, IngestRun, IngestStateProgress
+from backend.route import (
+    ROUTE_BRIDGES_SQL,
+    RouteError,
+    fetch_osrm_route,
+    parse_lonlat,
+    route_summary,
+    select_route_bridges,
+)
 from backend.scoring import publicize_text
 
 def _static_dir() -> Path:
@@ -247,6 +256,28 @@ def _map_feature(bridge: Bridge) -> dict:
 def _radius_meters(radius_km: float, minimum_km: float, maximum_km: float) -> float:
     """Clamp a kilometer radius, then convert. Do not clamp after converting."""
     return max(minimum_km, min(float(radius_km), maximum_km)) * 1000.0
+
+
+def _fetch_route_bridges(db: Session, geometry: dict, meters: float):
+    """Bridges within `meters` of the route line, with distance and along-route."""
+    rows = db.execute(
+        text(ROUTE_BRIDGES_SQL),
+        {"geojson": json.dumps(geometry), "meters": meters},
+    ).all()
+    if not rows:
+        return []
+    by_id = {
+        bridge.id: bridge
+        for bridge in db.query(Bridge).filter(Bridge.id.in_([row.id for row in rows])).all()
+    }
+    matched = []
+    for row in rows:
+        bridge = by_id.get(row.id)
+        if bridge is None:
+            continue
+        bridge.along = float(row.along) if row.along is not None else 0.0
+        matched.append((bridge, float(row.dist) if row.dist is not None else 0.0))
+    return matched
 
 
 def create_app() -> Flask:
@@ -637,6 +668,40 @@ def create_app() -> Flask:
                     "poor": poor,
                     "poor_pct": round((poor / total) * 100, 1) if total else 0,
                     "daily_crossings_on_poor": int(crossings or 0),
+                }
+            )
+        finally:
+            db.close()
+
+    @app.get("/api/drive")
+    def drive():
+        start = parse_lonlat(request.args.get("from"))
+        end = parse_lonlat(request.args.get("to"))
+        if not start or not end:
+            abort(400, "from=lng,lat and to=lng,lat are required")
+        if start == end:
+            abort(400, "start and end must be different points")
+        try:
+            route = fetch_osrm_route(start, end)
+        except RouteError as exc:
+            return jsonify({"error": exc.message}), exc.status
+        db = _session()
+        try:
+            matched = _fetch_route_bridges(
+                db, route["geometry"], float(Config.ROUTE_BUFFER_M)
+            )
+            bridges = [bridge for bridge, _dist in matched]
+            summary = route_summary(bridges)
+            listed, capped = select_route_bridges(bridges, Config.ROUTE_LIST_CAP)
+            return jsonify(
+                {
+                    "route": route,
+                    "summary": {
+                        **summary,
+                        "listed": len(listed),
+                        "capped": capped,
+                    },
+                    "bridges": [_list_item(bridge) for bridge in listed],
                 }
             )
         finally:

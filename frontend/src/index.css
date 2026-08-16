@@ -147,7 +147,121 @@ button {
   color: #0077ed;
 }
 
+.brand-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.map-brand-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-drive {
+  flex: 0 0 auto;
+}
+
+.trip-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trip-field span {
+  font-size: 0.75rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+  color: var(--mute);
+}
+
+.trip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trip-drop,
+.trip-clear,
+.trip-use {
+  font-size: 0.8125rem;
+  font-weight: 510;
+  letter-spacing: -0.01em;
+}
+
+.trip-drop,
+.trip-clear {
+  color: #0071e3;
+  padding: 4px 0;
+}
+
+.trip-drop:hover,
+.trip-clear:hover,
+.trip-use:hover {
+  color: #0077ed;
+}
+
+.trip-drop.is-on {
+  color: var(--ink);
+}
+
+.trip-hint {
+  margin: 0;
+  color: var(--mute);
+  font-size: 0.75rem;
+}
+
+.trip-use {
+  margin-top: 10px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--well);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.trip-use:hover {
+  color: var(--ink);
+  background: var(--line);
+}
+
+.trip-pulse {
+  padding-bottom: 12px;
+}
+
+.col .trip-pulse {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row.is-poor {
+  background: rgb(180 35 24 / 0.04);
+}
+
+.map.is-pick,
+.map.is-pick .maplibregl-canvas {
+  cursor: crosshair;
+}
+
 .locate:focus-visible,
+.trip-drop:focus-visible,
+.trip-clear:focus-visible,
+.trip-use:focus-visible,
 .row:focus-visible,
 .basemap button:focus-visible,
 .legend button:focus-visible,
@@ -965,9 +1079,13 @@ button {
     z-index: 4;
   }
 
+  .map-brand-row {
+    margin: 0 0 8px;
+  }
+
   .map-brand {
     display: block;
-    margin: 0 0 8px 2px;
+    margin: 0 0 0 2px;
     font-family: var(--font-mark);
     font-weight: 600;
     font-size: 0.8125rem;
@@ -1143,6 +1261,11 @@ button {
     font-size: 0.75rem;
   }
 
+  .trip-use {
+    height: 44px;
+    width: 100%;
+  }
+
   .sheet.peek .section-head {
     display: none;
   }
@@ -1247,7 +1370,8 @@ button {
   }
 
   .sheet.peek .list,
-  .sheet.peek .empty {
+  .sheet.peek .empty,
+  .sheet.peek .trip-use {
     display: none;
   }
 

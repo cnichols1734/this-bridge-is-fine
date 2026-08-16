@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { searchPlaces } from "./api.js";
 
-export default function SearchBox({ onPick, near }) {
-  const [q, setQ] = useState("");
+export default function SearchBox({
+  onPick,
+  near,
+  placeholder = "City or ZIP",
+  label = "Search city or ZIP",
+  value,
+}) {
+  const [q, setQ] = useState(value || "");
+
+  useEffect(() => {
+    if (value != null) setQ(value);
+  }, [value]);
   const [hits, setHits] = useState([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -57,8 +67,8 @@ export default function SearchBox({ onPick, near }) {
         enterKeyHint="search"
         autoComplete="off"
         spellCheck={false}
-        placeholder="City or ZIP"
-        aria-label="Search city or ZIP"
+        placeholder={placeholder}
+        aria-label={label}
         value={q}
         onChange={(event) => setQ(event.target.value)}
         onFocus={() => hits.length && setOpen(true)}

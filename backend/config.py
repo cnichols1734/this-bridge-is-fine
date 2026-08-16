@@ -24,6 +24,12 @@ class Config:
     DEFAULT_NEARBY_KM = 12
     DEFAULT_WORST_KM = 25
     WORST_LIMIT = 10
+    # Public OSRM demo. Point this at a self-hosted router if the demo is down.
+    OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org")
+    # NBI points sit on the structure, not always the travel lane. 150 m catches
+    # the crossing without pulling in every nearby overpass.
+    ROUTE_BUFFER_M = int(os.environ.get("ROUTE_BUFFER_M", "150"))
+    ROUTE_LIST_CAP = int(os.environ.get("ROUTE_LIST_CAP", "200"))
 
 
 def normalize_database_url(url: str) -> str:

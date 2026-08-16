@@ -6,6 +6,29 @@ export function formatAdt(value, suspect) {
   return suspect ? `${text} (reported)` : text;
 }
 
+export function formatDriveTime(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const minutes = Math.round(total / 60);
+  if (minutes < 1) return "Under 1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (rest === 0) return hours === 1 ? "1 hr" : `${hours} hr`;
+  return `${hours} hr ${rest} min`;
+}
+
+export function formatDriveDistance(meters) {
+  const miles = Number(meters || 0) / 1609.344;
+  if (miles < 0.1) return `${Math.max(1, Math.round(Number(meters || 0) / 0.3048))} ft`;
+  if (miles < 10) return `${miles.toFixed(1)} mi`;
+  return `${Math.round(miles).toLocaleString()} mi`;
+}
+
+export function formatEta(seconds, now = new Date()) {
+  const eta = new Date(now.getTime() + Math.max(0, Number(seconds) || 0) * 1000);
+  return eta.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 export function formatCrossings(value) {
   const n = Number(value || 0);
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -109,6 +132,20 @@ export const COPY = {
   scoreHeading: "Score",
   nearest: "Nearest",
   lowestScores: "Lowest scores in view",
+  drive: "Drive",
+  driveStart: "Start",
+  driveEnd: "End",
+  driveHere: "Your location",
+  driveCenter: "Map center",
+  driveDrop: "Drop points on the map",
+  driveDropHint: "Tap the start, then the end.",
+  driveUse: "Use this drive",
+  driveClear: "Clear",
+  driveLooking: "Looking up the route.",
+  driveNone: "No driving route for these points.",
+  driveDown: "Routing is unavailable.",
+  driveBridges: "Bridges on this drive",
+  driveEmpty: "No structures on this drive.",
 };
 
 export const RANK_NOTE = COPY.rankNote;

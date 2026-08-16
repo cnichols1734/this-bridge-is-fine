@@ -2,15 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import MapView from "./MapView.jsx";
 import Detail, { RankNote } from "./Detail.jsx";
 import SearchBox from "./SearchBox.jsx";
+import TripBar from "./TripBar.jsx";
 import Sheet, { detentHeight } from "./Sheet.jsx";
-import { fetchBridge, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
+import { fetchBridge, fetchDrive, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
 import {
   CHICAGO,
   CONDITION_FILTERS,
   COPY,
   conditionClass,
   conditionVisible,
+  formatAdt,
   formatCrossings,
+  formatDriveDistance,
+  formatDriveTime,
+  formatEta,
   officialCondition,
   readConditionFilter,
   readPermalink,
@@ -19,13 +24,13 @@ import {
   writePermalink,
 } from "./format.js";
 
-function Row({ bridge, selected, onSelect, showScore }) {
+function Row({ bridge, selected, onSelect, showScore, trip }) {
   const cond = officialCondition(bridge.condition);
   const condLabel = bridge.condition_label || "Unknown";
   return (
     <button
       type="button"
-      className={`row${selected ? " is-on" : ""}`}
+      className={`row${selected ? " is-on" : ""}${cond === "P" ? " is-poor" : ""}`}
       aria-current={selected ? "true" : undefined}
       onClick={() => onSelect(bridge.id)}
     >
@@ -36,10 +41,12 @@ function Row({ bridge, selected, onSelect, showScore }) {
         </div>
         <div className="row-meta">
           <span className={`cond cond-${cond}`}>{condLabel}</span>
-          {bridge.distance_km != null ? ` · ${bridge.distance_km} km` : ""}
-          {bridge.year_built ? ` · ${bridge.year_built}` : ""}
+          {trip && bridge.score != null ? ` · ${bridge.score}` : ""}
+          {trip ? ` · ${formatAdt(bridge.adt, bridge.adt_suspect)}` : ""}
+          {!trip && bridge.distance_km != null ? ` · ${bridge.distance_km} km` : ""}
+          {!trip && bridge.year_built ? ` · ${bridge.year_built}` : ""}
         </div>
-        {bridge.headline ? <div className="row-head">{bridge.headline}</div> : null}
+        {!trip && bridge.headline ? <div className="row-head">{bridge.headline}</div> : null}
       </span>
       {showScore && bridge.score != null ? (
         <span
@@ -51,6 +58,66 @@ function Row({ bridge, selected, onSelect, showScore }) {
         </span>
       ) : null}
     </button>
+  );
+}
+
+function TripPulse({ payload, confirmed, onConfirm, onOpen }) {
+  if (!payload?.route) return null;
+  const { route, summary } = payload;
+  const bridges = summary?.bridges ?? 0;
+  const poor = summary?.poor ?? 0;
+  return (
+    <div className="sheet-pulse sheet-drag trip-pulse" onClick={onOpen}>
+      <div className="pulse-label">{COPY.drive}</div>
+      <div className="pulse-number">{formatDriveTime(route.duration_s)}</div>
+      <p className="pulse-copy">
+        {formatEta(route.duration_s)}
+        {` · ${formatDriveDistance(route.distance_m)}`}
+        {` · ${bridges.toLocaleString()} ${bridges === 1 ? "bridge" : "bridges"}`}
+        {poor > 0 ? (
+          <>
+            {" · "}
+            <span className="cond cond-P">{poor} Poor</span>
+          </>
+        ) : (
+          " · No Poor"
+        )}
+      </p>
+      {!confirmed ? (
+        <button
+          type="button"
+          className="trip-use"
+          onClick={(event) => {
+            event.stopPropagation();
+            onConfirm();
+          }}
+        >
+          {COPY.driveUse}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function fitRoute(map, geometry, detent, roomy) {
+  const coords = geometry?.coordinates;
+  if (!map || !coords?.length) return;
+  const west = Math.min(...coords.map((pair) => pair[0]));
+  const east = Math.max(...coords.map((pair) => pair[0]));
+  const south = Math.min(...coords.map((pair) => pair[1]));
+  const north = Math.max(...coords.map((pair) => pair[1]));
+  const mobile = window.matchMedia("(max-width: 900px)").matches;
+  const bottom = mobile ? detentHeight(detent, roomy) + 12 : 48;
+  map.fitBounds(
+    [
+      [west, south],
+      [east, north],
+    ],
+    {
+      padding: { top: mobile ? 132 : 56, bottom, left: 36, right: 36 },
+      duration: 700,
+      maxZoom: 13,
+    }
   );
 }
 
@@ -84,7 +151,17 @@ export default function App() {
     }
   });
   const [visibleConditions, setVisibleConditions] = useState(readConditionFilter);
+  const [tripOpen, setTripOpen] = useState(false);
+  const [tripStart, setTripStart] = useState(null);
+  const [tripEnd, setTripEnd] = useState(null);
+  const [tripDraft, setTripDraft] = useState(null);
+  const [trip, setTrip] = useState(null);
+  const [tripBusy, setTripBusy] = useState(false);
+  const [tripError, setTripError] = useState(null);
+  const [dropMode, setDropMode] = useState(false);
+  const [lastPlace, setLastPlace] = useState(null);
   const mapRef = useRef(null);
+  const tripKey = useRef("");
 
   const toggleCondition = useCallback((code) => {
     setVisibleConditions((current) => {
@@ -138,11 +215,11 @@ export default function App() {
     [rememberView]
   );
 
-  const padMap = useCallback((detent, bridge) => {
+  const padMap = useCallback((detent, bridge, roomy = false) => {
     const map = mapRef.current;
     if (!map) return;
     const mobile = window.matchMedia("(max-width: 900px)").matches;
-    const bottom = mobile ? detentHeight(detent) + 12 : 40;
+    const bottom = mobile ? detentHeight(detent, roomy) + 12 : 40;
     const camera = {
       padding: { top: mobile ? 88 : 24, bottom, left: 12, right: 12 },
       duration: 200,
@@ -219,18 +296,89 @@ export default function App() {
     );
   }, [flyHome]);
 
-  const goToPlace = useCallback(
-    (hit) => {
-      const map = mapRef.current;
-      if (!map) return;
-      map.easeTo({
-        center: [hit.lng, hit.lat],
-        zoom: 11.2,
-        duration: 800,
+  const goToPlace = useCallback((hit) => {
+    setLastPlace(hit);
+    if (tripOpen) {
+      setTripEnd({ lng: hit.lng, lat: hit.lat, label: hit.label });
+      setTrip(null);
+      setTripDraft(null);
+      return;
+    }
+    const map = mapRef.current;
+    if (!map) return;
+    map.easeTo({
+      center: [hit.lng, hit.lat],
+      zoom: 11.2,
+      duration: 800,
+    });
+  }, [tripOpen]);
+
+  const defaultStart = useCallback(() => {
+    const map = mapRef.current;
+    if (userLocation) {
+      return { ...userLocation, label: COPY.driveHere };
+    }
+    if (map) {
+      const here = map.getCenter();
+      return { lng: here.lng, lat: here.lat, label: COPY.driveCenter };
+    }
+    return { ...center, label: COPY.driveCenter };
+  }, [userLocation, center]);
+
+  const clearTrip = useCallback(() => {
+    tripKey.current = "";
+    setTripOpen(false);
+    setTripStart(null);
+    setTripEnd(null);
+    setTripDraft(null);
+    setTrip(null);
+    setTripBusy(false);
+    setTripError(null);
+    setDropMode(false);
+    setSheet("peek");
+  }, []);
+
+  const openDrive = useCallback(() => {
+    const origin = defaultStart();
+    setTripStart(origin);
+    if (lastPlace) {
+      setTripEnd({
+        lng: lastPlace.lng,
+        lat: lastPlace.lat,
+        label: lastPlace.label,
       });
-    },
-    []
-  );
+    }
+    setTrip(null);
+    setTripDraft(null);
+    setTripError(null);
+    setTripOpen(true);
+    setSheet("peek");
+  }, [defaultStart, lastPlace]);
+
+  const confirmTrip = useCallback(() => {
+    if (!tripDraft) return;
+    setTrip(tripDraft);
+    setDropMode(false);
+    setSheet("peek");
+    fitRoute(mapRef.current, tripDraft.route?.geometry, "peek", true);
+  }, [tripDraft]);
+
+  const pickTripPoint = useCallback((point) => {
+    const labeled = {
+      lng: point.lng,
+      lat: point.lat,
+      label: `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`,
+    };
+    if (!tripStart) {
+      setTripStart(labeled);
+      return;
+    }
+    setTripEnd(labeled);
+    setDropMode(false);
+    tripKey.current = "";
+    setTrip(null);
+    setTripDraft(null);
+  }, [tripStart]);
 
   useEffect(() => {
     fetchMeta().then(setMeta).catch(() => {});
@@ -260,11 +408,47 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (event) => {
-      if (event.key === "Escape") closeDetail();
+      if (event.key !== "Escape") return;
+      if (selectedId) {
+        closeDetail();
+        return;
+      }
+      if (tripOpen) clearTrip();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [closeDetail]);
+  }, [closeDetail, selectedId, tripOpen, clearTrip]);
+
+  useEffect(() => {
+    if (!tripOpen || !tripStart || !tripEnd) return undefined;
+    const key = `${tripStart.lng.toFixed(5)},${tripStart.lat.toFixed(5)}|${tripEnd.lng.toFixed(5)},${tripEnd.lat.toFixed(5)}`;
+    if (tripKey.current === key) return undefined;
+    tripKey.current = key;
+    let cancelled = false;
+    setTripBusy(true);
+    setTripError(null);
+    setTripDraft(null);
+    setTrip(null);
+    fetchDrive(tripStart, tripEnd)
+      .then((payload) => {
+        if (cancelled) return;
+        setTripDraft(payload);
+        setTripBusy(false);
+        fitRoute(mapRef.current, payload.route?.geometry, "peek", true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setTripBusy(false);
+        setTripDraft(null);
+        const message = err.message || COPY.driveDown;
+        setTripError(
+          /no driving route/i.test(message) ? COPY.driveNone : COPY.driveDown
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tripOpen, tripStart, tripEnd]);
 
   const onReady = (map) => {
     mapRef.current = map;
@@ -314,25 +498,103 @@ export default function App() {
   const pulseCopy = stats
     ? `${stats.poor.toLocaleString()} Poor of ${stats.total.toLocaleString()} in view. ${COPY.poorDefinition}`
     : COPY.pulseMove;
+  const tripPayload = trip || tripDraft;
+  const tripList = trip?.bridges || [];
+  const roomySheet = Boolean(tripOpen && tripPayload && !detail);
+  const searchNear = userLocation || center;
+
+  const tripComposer = tripOpen ? (
+    <TripBar
+      start={tripStart}
+      end={tripEnd}
+      near={searchNear}
+      dropping={dropMode}
+      busy={tripBusy}
+      onPickStart={(point) => {
+        setTripStart(point);
+        tripKey.current = "";
+        setTrip(null);
+        setTripDraft(null);
+      }}
+      onPickEnd={(point) => {
+        setTripEnd(point);
+        tripKey.current = "";
+        setTrip(null);
+        setTripDraft(null);
+      }}
+      onDrop={() => {
+        setDropMode((on) => {
+          if (on) return false;
+          tripKey.current = "";
+          setTripStart(null);
+          setTripEnd(null);
+          setTrip(null);
+          setTripDraft(null);
+          return true;
+        });
+      }}
+      onClear={clearTrip}
+    />
+  ) : null;
 
   return (
-    <div className={`app sheet-${sheet}${detail ? " has-place" : ""}`}>
+    <div
+      className={`app sheet-${sheet}${detail ? " has-place" : ""}${tripOpen ? " has-trip" : ""}`}
+    >
       <aside className="col col-left">
         <header className="brand">
           <div className="wordmark">This Bridge Is Fine</div>
           <p className="tag">{COPY.tagline}</p>
-          <SearchBox onPick={goToPlace} near={userLocation || center} />
-          <button className="locate" type="button" onClick={locate}>
-            Use my location
-          </button>
+          {tripOpen ? (
+            tripComposer
+          ) : (
+            <>
+              <SearchBox onPick={goToPlace} near={searchNear} />
+              <div className="brand-actions">
+                <button className="locate" type="button" onClick={locate}>
+                  Use my location
+                </button>
+                <button className="locate" type="button" onClick={openDrive}>
+                  {COPY.drive}
+                </button>
+              </div>
+            </>
+          )}
         </header>
         {error ? <div className="error">{error}</div> : null}
-        {hint ? <div className="hint">{hint}</div> : null}
+        {tripError ? <div className="error">{tripError}</div> : null}
+        {hint && !tripOpen ? <div className="hint">{hint}</div> : null}
+        {trip && tripPayload ? (
+          <TripPulse payload={tripPayload} confirmed onOpen={() => {}} />
+        ) : tripDraft ? (
+          <TripPulse
+            payload={tripDraft}
+            confirmed={false}
+            onConfirm={confirmTrip}
+            onOpen={() => {}}
+          />
+        ) : null}
         <div className="section-head">
-          <div className="section-label">{COPY.nearest}</div>
+          <div className="section-label">
+            {trip ? COPY.driveBridges : COPY.nearest}
+          </div>
         </div>
         <div className="list">
-          {list.length === 0 && !hint ? (
+          {trip ? (
+            tripList.length === 0 ? (
+              <div className="empty">{COPY.driveEmpty}</div>
+            ) : (
+              tripList.map((bridge) => (
+                <Row
+                  key={bridge.id}
+                  bridge={bridge}
+                  selected={bridge.id === selectedId}
+                  onSelect={select}
+                  trip
+                />
+              ))
+            )
+          ) : list.length === 0 && !hint ? (
             <div className="empty">{COPY.zoomHint}</div>
           ) : list.length === 0 ? null : shownList.length === 0 ? (
             <div className="empty">{COPY.emptyFilter}</div>
@@ -361,10 +623,26 @@ export default function App() {
           onDeselect={closeDetail}
           basemap={basemap}
           visibleConditions={visibleConditions}
+          route={tripPayload?.route?.geometry || null}
+          routePreview={Boolean(tripDraft && !trip)}
+          tripEnds={tripOpen ? { start: tripStart, end: tripEnd } : null}
+          pickMode={dropMode}
+          onPickPoint={pickTripPoint}
         />
         <div className="map-search">
-          <div className="map-brand">This Bridge Is Fine</div>
-          <SearchBox onPick={goToPlace} near={userLocation || center} />
+          <div className="map-brand-row">
+            <div className="map-brand">This Bridge Is Fine</div>
+            {tripOpen ? null : (
+              <button className="locate map-drive" type="button" onClick={openDrive}>
+                {COPY.drive}
+              </button>
+            )}
+          </div>
+          {tripOpen ? (
+            tripComposer
+          ) : (
+            <SearchBox onPick={goToPlace} near={searchNear} />
+          )}
         </div>
         {away && userLocation ? (
           <button
@@ -427,17 +705,45 @@ export default function App() {
       </main>
 
       <aside className="col col-right">
-        <div className="pulse">
-          <div className="pulse-label">{COPY.pulseLabel}</div>
-          <div className="pulse-number">{pulseNumber}</div>
-          <p className="pulse-copy">{pulseCopy}</p>
-        </div>
+        {trip && tripPayload ? (
+          <TripPulse payload={tripPayload} confirmed onOpen={() => {}} />
+        ) : tripDraft ? (
+          <TripPulse
+            payload={tripDraft}
+            confirmed={false}
+            onConfirm={confirmTrip}
+            onOpen={() => {}}
+          />
+        ) : (
+          <div className="pulse">
+            <div className="pulse-label">{COPY.pulseLabel}</div>
+            <div className="pulse-number">{pulseNumber}</div>
+            <p className="pulse-copy">{pulseCopy}</p>
+          </div>
+        )}
         <div className="section-head">
-          <div className="section-label">{COPY.lowestScores}</div>
-          <RankNote />
+          <div className="section-label">
+            {trip ? COPY.driveBridges : COPY.lowestScores}
+          </div>
+          {trip ? null : <RankNote />}
         </div>
         <div className="list">
-          {shownWorst.length === 0 ? (
+          {trip ? (
+            tripList.length === 0 ? (
+              <div className="empty">{COPY.driveEmpty}</div>
+            ) : (
+              tripList.map((bridge) => (
+                <Row
+                  key={bridge.id}
+                  bridge={bridge}
+                  selected={bridge.id === selectedId}
+                  onSelect={select}
+                  trip
+                  showScore
+                />
+              ))
+            )
+          ) : shownWorst.length === 0 ? (
             <div className="empty">{COPY.emptyWorst}</div>
           ) : (
             shownWorst.map((bridge) => (
@@ -455,16 +761,48 @@ export default function App() {
 
       <Sheet
         detent={sheet}
+        roomy={roomySheet}
         onDetent={(next) => {
           setSheet(next);
-          padMap(next, detail);
+          padMap(next, detail, roomySheet);
         }}
-        onDismiss={detail ? closeDetail : undefined}
+        onDismiss={detail ? closeDetail : tripOpen ? clearTrip : undefined}
       >
         {detail ? (
           <>
             <Detail bridge={detail} onClose={closeDetail} />
             <p className="sheet-legal">{COPY.poorDefinition}</p>
+          </>
+        ) : tripPayload ? (
+          <>
+            <TripPulse
+              payload={tripPayload}
+              confirmed={Boolean(trip)}
+              onConfirm={confirmTrip}
+              onOpen={() => setSheet("half")}
+            />
+            {sheet !== "peek" && trip ? (
+              <>
+                <div className="section-head">
+                  <div className="section-label">{COPY.driveBridges}</div>
+                </div>
+                <div className="list">
+                  {tripList.length === 0 ? (
+                    <div className="empty">{COPY.driveEmpty}</div>
+                  ) : (
+                    tripList.map((bridge) => (
+                      <Row
+                        key={bridge.id}
+                        bridge={bridge}
+                        selected={bridge.id === selectedId}
+                        onSelect={select}
+                        trip
+                      />
+                    ))
+                  )}
+                </div>
+              </>
+            ) : null}
           </>
         ) : (
           <>

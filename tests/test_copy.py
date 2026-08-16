@@ -21,7 +21,9 @@ SCAN = [
     ROOT / "frontend" / "src" / "format.js",
     ROOT / "frontend" / "src" / "App.jsx",
     ROOT / "frontend" / "src" / "Detail.jsx",
+    ROOT / "frontend" / "src" / "TripBar.jsx",
     ROOT / "backend" / "api.py",
+    ROOT / "backend" / "route.py",
 ]
 
 

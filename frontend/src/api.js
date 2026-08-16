@@ -47,6 +47,14 @@ export function fetchHealth() {
   return getJson("/api/health");
 }
 
+export function fetchDrive(start, end) {
+  const params = new URLSearchParams({
+    from: `${start.lng},${start.lat}`,
+    to: `${end.lng},${end.lat}`,
+  });
+  return getJson(`/api/drive?${params}`);
+}
+
 export function searchPlaces(q, near) {
   const query = q.trim();
   if (query.length < 2) return Promise.resolve([]);
