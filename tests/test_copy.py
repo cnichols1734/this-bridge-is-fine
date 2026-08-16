@@ -52,6 +52,16 @@ def test_low_zoom_does_not_claim_city_scale_is_required():
     assert "No structures in this view." in fmt
 
 
+def test_drive_map_uses_route_bridges_not_viewport():
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    fmt = (ROOT / "frontend" / "src" / "format.js").read_text()
+    assert "mapDotsCollection" in app
+    assert "geojson={mapGeojson}" in app
+    assert "if (drivePinsOn.current) return" in app
+    assert "driveBridgesForMap" in fmt
+    assert "driveBridgesGeojson" in fmt
+
+
 def test_trip_errors_are_not_desktop_only():
     app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
     bar = (ROOT / "frontend" / "src" / "TripBar.jsx").read_text()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapView from "./MapView.jsx";
 import Detail, { RankNote } from "./Detail.jsx";
 import SearchBox from "./SearchBox.jsx";
@@ -11,11 +11,13 @@ import {
   COPY,
   conditionClass,
   conditionVisible,
+  driveBridgesForMap,
   formatAdt,
   formatCrossings,
   formatDriveDistance,
   formatDriveTime,
   formatEta,
+  mapDotsCollection,
   nextDropSlot,
   officialCondition,
   readConditionFilter,
@@ -172,6 +174,9 @@ export default function App() {
   const tripKey = useRef("");
   const typeaheadOpen = useRef(false);
   const typeaheadCount = useRef(0);
+  const lastDriveBridges = useRef(null);
+  const drivePinsOn = useRef(false);
+  const wasDrivePinsOn = useRef(false);
 
   const toggleCondition = useCallback((code) => {
     setVisibleConditions((current) => {
@@ -210,8 +215,10 @@ export default function App() {
   const loadViewport = useCallback(
     async (map) => {
       rememberView(map);
+      if (drivePinsOn.current) return;
       try {
         const data = await fetchViewport(map.getBounds(), map.getZoom());
+        if (drivePinsOn.current) return;
         setGeojson(data.geojson);
         setList(data.list);
         setWorst(data.worst);
@@ -219,6 +226,7 @@ export default function App() {
         setHint(data.geojson.hint || null);
         setError(null);
       } catch (err) {
+        if (drivePinsOn.current) return;
         setError(err.message);
       }
     },
@@ -532,6 +540,31 @@ export default function App() {
     : COPY.pulseMove;
   const tripPayload = trip || tripDraft;
   const tripList = trip?.bridges || [];
+  if (!tripOpen) {
+    lastDriveBridges.current = null;
+  } else if (tripPayload?.route) {
+    lastDriveBridges.current = tripPayload.bridges || [];
+  }
+  const driveBridges = driveBridgesForMap({
+    route: tripPayload?.route,
+    bridges: tripPayload?.bridges,
+    tripOpen,
+    lastBridges: lastDriveBridges.current,
+  });
+  drivePinsOn.current = driveBridges != null;
+  const mapGeojson = useMemo(
+    () => mapDotsCollection(geojson, driveBridges),
+    [geojson, tripPayload, tripOpen]
+  );
+
+  useEffect(() => {
+    const on = drivePinsOn.current;
+    if (wasDrivePinsOn.current && !on && mapRef.current) {
+      loadViewport(mapRef.current);
+    }
+    wasDrivePinsOn.current = on;
+  }, [tripOpen, tripPayload, loadViewport]);
+
   const roomySheet = Boolean(tripOpen && (tripPayload || tripError) && !detail);
   const searchNear = userLocation || center;
 
@@ -646,7 +679,7 @@ export default function App() {
         <MapView
           center={center}
           zoom={zoom}
-          geojson={geojson}
+          geojson={mapGeojson}
           selectedId={selectedId}
           onReady={onReady}
           onMove={loadViewport}

@@ -234,3 +234,47 @@ export function viewIsAway(user, center, zoom, homeZoom = CHICAGO.zoom) {
   if (!user || !center) return false;
   return kmBetween(user, center) > 1.2 || Math.abs((zoom ?? homeZoom) - homeZoom) > 0.8;
 }
+
+const EMPTY_DRIVE_BRIDGES = [];
+
+/**
+ * Which bridges the map should paint.
+ * A drive uses only `/api/drive` `bridges` (Poor is never dropped from that list).
+ * Null means keep the viewport overlay.
+ */
+export function driveBridgesForMap({ route, bridges, tripOpen, lastBridges } = {}) {
+  if (route) return Array.isArray(bridges) ? bridges : EMPTY_DRIVE_BRIDGES;
+  if (tripOpen && lastBridges != null) return lastBridges;
+  return null;
+}
+
+/** FeatureCollection for drive pins. Same properties the viewport overlay uses. */
+export function driveBridgesGeojson(bridges) {
+  const features = [];
+  for (const bridge of Array.isArray(bridges) ? bridges : []) {
+    if (!bridge?.id || !Number.isFinite(bridge.lng) || !Number.isFinite(bridge.lat)) {
+      continue;
+    }
+    features.push({
+      type: "Feature",
+      id: bridge.id,
+      geometry: {
+        type: "Point",
+        coordinates: [bridge.lng, bridge.lat],
+      },
+      properties: {
+        id: bridge.id,
+        condition: bridge.condition,
+        lowest: bridge.lowest,
+        score: bridge.score,
+        status: bridge.status,
+      },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+export function mapDotsCollection(viewportGeojson, driveBridges) {
+  if (driveBridges != null) return driveBridgesGeojson(driveBridges);
+  return viewportGeojson;
+}

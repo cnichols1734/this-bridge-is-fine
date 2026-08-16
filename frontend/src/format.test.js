@@ -8,9 +8,12 @@ import {
   RATING_NOTE,
   conditionClass,
   conditionVisible,
+  driveBridgesForMap,
+  driveBridgesGeojson,
   formatDriveDistance,
   formatDriveTime,
   formatEta,
+  mapDotsCollection,
   nextDropSlot,
   officialCondition,
   ratingBand,
@@ -117,6 +120,117 @@ test("drop points fill the next empty end and do not imply a wipe", () => {
   assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, null), "end");
   assert.equal(nextDropSlot({ label: "A" }, { label: "B" }, "start"), "start");
   assert.equal(nextDropSlot(null, { label: "B" }, "end"), "end");
+});
+
+test("drive overlay uses only the drive list, including every Poor", () => {
+  const viewport = {
+    type: "FeatureCollection",
+    features: [
+      { properties: { id: "48-HOUSTON" } },
+      { properties: { id: "48-GALVESTON" } },
+    ],
+  };
+  const drive = [
+    {
+      id: "48-POOR-1",
+      lng: -95.37,
+      lat: 29.76,
+      condition: "P",
+      lowest: 4,
+      score: 22,
+      status: "A",
+    },
+    {
+      id: "48-POOR-2",
+      lng: -95.4,
+      lat: 29.8,
+      condition: "P",
+      lowest: 3,
+      score: 18,
+      status: "A",
+    },
+    {
+      id: "48-GOOD",
+      lng: -95.35,
+      lat: 29.72,
+      condition: "G",
+      lowest: 7,
+      score: 80,
+      status: "A",
+    },
+  ];
+
+  assert.equal(driveBridgesForMap({ tripOpen: false }), null);
+  assert.equal(mapDotsCollection(viewport, null), viewport);
+
+  const listed = driveBridgesForMap({
+    route: { type: "LineString", coordinates: [[-95.3, 29.7], [-94.8, 29.3]] },
+    bridges: drive,
+  });
+  assert.deepEqual(
+    listed.map((bridge) => bridge.id),
+    ["48-POOR-1", "48-POOR-2", "48-GOOD"]
+  );
+  const overlay = mapDotsCollection(viewport, listed);
+  assert.deepEqual(
+    overlay.features.map((feature) => feature.properties.id),
+    ["48-POOR-1", "48-POOR-2", "48-GOOD"]
+  );
+  assert.equal(overlay.features[0].properties.condition, "P");
+  assert.equal(overlay.features[2].properties.condition, "G");
+  assert.ok(!overlay.features.some((feature) => feature.properties.id === "48-HOUSTON"));
+});
+
+test("empty drive list does not fall back to the viewport spray", () => {
+  const viewport = {
+    type: "FeatureCollection",
+    features: [{ properties: { id: "17-CITY" } }],
+  };
+  const listed = driveBridgesForMap({
+    route: { type: "LineString", coordinates: [[-87.6, 41.8], [-87.7, 42.0]] },
+    bridges: [],
+  });
+  assert.deepEqual(listed, []);
+  assert.deepEqual(mapDotsCollection(viewport, listed), {
+    type: "FeatureCollection",
+    features: [],
+  });
+});
+
+test("leaving Drive returns the viewport collection", () => {
+  const viewport = { type: "FeatureCollection", features: [{ properties: { id: "17-A" } }] };
+  const last = [{ id: "17-DRIVE", lng: -87.6, lat: 41.8, condition: "P" }];
+  assert.deepEqual(
+    driveBridgesForMap({
+      tripOpen: true,
+      lastBridges: last,
+    }),
+    last
+  );
+  assert.equal(
+    driveBridgesForMap({
+      tripOpen: false,
+      lastBridges: last,
+    }),
+    null
+  );
+  assert.equal(mapDotsCollection(viewport, null), viewport);
+});
+
+test("drive geojson keeps official condition codes for existing colors", () => {
+  const geojson = driveBridgesGeojson([
+    { id: "1-P", lng: -87.6, lat: 41.8, condition: "P", status: "A" },
+    { id: "1-F", lng: -87.61, lat: 41.81, condition: "F", status: "A" },
+    { id: "1-G", lng: -87.62, lat: 41.82, condition: "G", status: "A" },
+    { id: "1-BAD", lng: null, lat: 41.8, condition: "P" },
+  ]);
+  assert.deepEqual(
+    geojson.features.map((feature) => feature.properties.condition),
+    ["P", "F", "G"]
+  );
+  assert.equal(CONDITION_COLORS[geojson.features[0].properties.condition], "#b42318");
+  assert.equal(CONDITION_COLORS[geojson.features[1].properties.condition], "#c4a84a");
+  assert.equal(CONDITION_COLORS[geojson.features[2].properties.condition], "#5c7a52");
 });
 
 test("drive time, distance, and ETA stay precise", () => {
