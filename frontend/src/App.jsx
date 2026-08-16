@@ -474,26 +474,28 @@ export default function App() {
               <p className="pulse-copy">{pulseCopy}</p>
             </div>
             {sheet !== "peek" ? (
-              <div className="section-head">
-                <div className="section-label">{COPY.lowestScores}</div>
-                <RankNote />
-              </div>
+              <>
+                <div className="section-head">
+                  <div className="section-label">{COPY.lowestScores}</div>
+                  <RankNote />
+                </div>
+                <div className="list">
+                  {shownWorst.length === 0 ? (
+                    <div className="empty">{COPY.emptyWorst}</div>
+                  ) : (
+                    shownWorst.map((bridge) => (
+                      <Row
+                        key={bridge.id}
+                        bridge={bridge}
+                        selected={bridge.id === selectedId}
+                        onSelect={select}
+                        showScore
+                      />
+                    ))
+                  )}
+                </div>
+              </>
             ) : null}
-            <div className="list">
-              {shownWorst.length === 0 ? (
-                <div className="empty">{COPY.emptyWorst}</div>
-              ) : (
-                (sheet === "peek" ? shownWorst.slice(0, 1) : shownWorst).map((bridge) => (
-                  <Row
-                    key={bridge.id}
-                    bridge={bridge}
-                    selected={bridge.id === selectedId}
-                    onSelect={select}
-                    showScore
-                  />
-                ))
-              )}
-            </div>
           </>
         )}
       </Sheet>

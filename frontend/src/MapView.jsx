@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { CONDITION_COLORS } from "./format.js";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";

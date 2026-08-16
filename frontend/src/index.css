@@ -11,7 +11,7 @@
   --unknown: #c7c7cc;
   --ring: #1d1d1f;
   --sheet: #ffffff;
-  --sheet-h: 168px;
+  --sheet-h: 156px;
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", system-ui, sans-serif;
   --font-mark: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
@@ -345,7 +345,10 @@ button {
   right: 12px;
 }
 
-.maplibregl-ctrl-group {
+.maplibregl-ctrl-group,
+.maplibregl-ctrl-group:not(:empty),
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact {
   border: 1px solid var(--line);
   border-radius: 0;
   box-shadow: none;
@@ -353,11 +356,9 @@ button {
   overflow: hidden;
 }
 
-.maplibregl-ctrl-attrib {
-  background: var(--bg) !important;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  box-shadow: none;
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: var(--bg);
   color: var(--mute);
 }
 
@@ -1173,6 +1174,19 @@ button {
 /* 375 portrait is first-class. Long NBI words (Satisfactory, Imminent failure)
    do not fit the 3-column rating row below ~430px. */
 @media (max-width: 480px) {
+  .map-dock {
+    right: 12px;
+    gap: 6px;
+  }
+
+  .legend button,
+  .basemap button {
+    height: 36px;
+    padding: 0 8px;
+    font-size: 0.75rem;
+    min-width: 0;
+  }
+
   .rating {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto;
@@ -1243,14 +1257,40 @@ button {
 
   .sheet .detail-title,
   .sheet .facts,
-  .sheet.half .ratings,
-  .sheet.half .file-id,
-  .sheet.half .sheet-legal {
+  .sheet .why,
+  .sheet .file-id,
+  .sheet .sheet-legal,
+  .sheet .ratings-note,
+  .sheet .concern-bar,
+  .sheet .concern-meta,
+  .sheet .rank-note,
+  .sheet.half .ratings {
     display: none;
   }
 
   .sheet.full .ratings {
-    margin-top: 14px;
+    display: grid;
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .sheet.full .place-title {
+    font-size: 1.125rem;
+  }
+
+  .sheet.full .concern {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .sheet.full .concern-word {
+    font-size: 1.375rem;
+  }
+
+  .map-dock {
+    flex-wrap: nowrap;
+    right: auto;
+    max-width: calc(100% - 88px);
   }
 }
 

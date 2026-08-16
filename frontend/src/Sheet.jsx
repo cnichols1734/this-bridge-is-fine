@@ -9,10 +9,10 @@ function viewportH() {
 export function detentHeight(detent) {
   const h = viewportH();
   const landscape = window.innerWidth > h && h <= 500;
-  if (detent === "full") return Math.round(h * (landscape ? 0.86 : 0.92));
-  if (detent === "half") return Math.round(h * (landscape ? 0.5 : 0.56));
-  if (landscape) return Math.min(108, Math.round(h * 0.28));
-  return Math.min(168, Math.round(h * 0.22));
+  if (detent === "full") return Math.round(h * (landscape ? 0.94 : 0.92));
+  if (detent === "half") return Math.round(h * (landscape ? 0.52 : 0.56));
+  if (landscape) return Math.min(96, Math.round(h * 0.26));
+  return Math.min(156, Math.round(h * 0.22));
 }
 
 function nearestDetent(height, dismissible) {
