@@ -67,6 +67,53 @@ export const CONDITION_FILTERS = [
 
 export const ALL_CONDITIONS = CONDITION_FILTERS.map((item) => item.code);
 
+/** Official NBI 0–9 words. Same table the API sends as ratings[k].word. */
+export const CONDITION_WORDS = {
+  9: "Excellent",
+  8: "Very good",
+  7: "Good",
+  6: "Satisfactory",
+  5: "Fair",
+  4: "Poor",
+  3: "Serious",
+  2: "Critical",
+  1: "Imminent failure",
+  0: "Failed",
+};
+
+/**
+ * Official G/F/P on the map. One chromatic accent: Poor red.
+ * Good and Fair stay cool-neutral so the dots are not a traffic light.
+ */
+export const CONDITION_COLORS = {
+  P: "#b42318",
+  F: "#424245",
+  G: "#8e8e93",
+  U: "#c7c7cc",
+};
+
+export const COPY = {
+  rankNote:
+    "A ranking from the worst inspector rating and daily traffic. Not an official grade.",
+  ratingNote: "Inspector ratings, 0 to 9. Higher is better.",
+  zoomHint: "Zoom in to city scale to see structures.",
+  emptyFilter: "No structures in view for the selected conditions.",
+  emptyWorst: "No low scores in this view.",
+  inventoryEmpty: "Inventory is not loaded.",
+  inventoryDown: "Inventory is unavailable.",
+  pulseLabel: "Daily crossings on Poor",
+  pulseMove: "Move the map. The count is for this view.",
+  poorDefinition: "Poor means a major component scored 4 or below.",
+  tagline: "The National Bridge Inventory, starting with the one under you.",
+  scoreMeta: "/ 100 · higher is better",
+  scoreHeading: "Score",
+  nearest: "Nearest",
+  lowestScores: "Lowest scores in view",
+};
+
+export const RANK_NOTE = COPY.rankNote;
+export const RATING_NOTE = COPY.ratingNote;
+
 export function readConditionFilter() {
   try {
     const raw = localStorage.getItem("tbif-conditions");
@@ -86,28 +133,45 @@ export function writeConditionFilter(codes) {
   }
 }
 
+export function officialCondition(code) {
+  if (code === "G" || code === "F" || code === "P") return code;
+  return "U";
+}
+
 export function conditionVisible(bridge, codes) {
-  return codes.includes(bridge.condition || "G");
+  const code = officialCondition(bridge?.condition);
+  if (code === "U") return true;
+  return codes.includes(code);
 }
 
-export const RANK_NOTE =
-  "Our own score, not an official grade. It drops when the bridge's worst part is in bad shape and a lot of people cross it.";
-
-export const RATING_NOTE = "Inspector ratings, 0 to 9. Higher is better, same as our score.";
-
-export function scoreBand(score) {
-  if (score == null) return null;
-  if (score >= 76) return { word: "Looks fine", short: "Fine", tone: "G" };
-  if (score >= 51) return { word: "Worth a look", short: "Watch", tone: "F" };
-  if (score >= 26) return { word: "Bad shape", short: "Bad", tone: "P" };
-  return { word: "Serious shape", short: "Serious", tone: "P" };
+export function conditionClass(bridge) {
+  const restricted = ["K", "P", "R", "D"].includes(bridge.status);
+  const code = officialCondition(bridge.condition);
+  return `dot ${code}${restricted ? " restricted" : ""}`;
 }
 
+/** Official NBI band for a 0–9 inspector rating. Null is not Good. */
 export function ratingBand(value) {
-  if (value == null) return "";
-  if (value <= 4) return "Poor";
-  if (value <= 6) return "Fair";
+  if (value == null || Number.isNaN(Number(value))) return "Unknown";
+  const n = Number(value);
+  if (n <= 4) return "Poor";
+  if (n <= 6) return "Fair";
   return "Good";
+}
+
+export function ratingWord(value, apiWord) {
+  if (apiWord) return apiWord;
+  if (value == null || Number.isNaN(Number(value))) return "Unknown";
+  return CONDITION_WORDS[Number(value)] || "Unknown";
+}
+
+export function ratingIsPoor(value) {
+  return value != null && !Number.isNaN(Number(value)) && Number(value) <= 4;
+}
+
+/** Component bar class. Poor-red only when the rating itself is Poor. */
+export function ratingClass(value) {
+  return ratingIsPoor(value) ? "rating is-poor" : "rating";
 }
 
 export function kmBetween(a, b) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { CONDITION_COLORS } from "./format.js";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
@@ -65,10 +66,12 @@ function addBridgeOverlay(map, data, selectedId, basemap, codes) {
           "match",
           ["get", "condition"],
           "P",
-          "#b42318",
+          CONDITION_COLORS.P,
           "F",
-          "#c4a84a",
-          "#5c7a52",
+          CONDITION_COLORS.F,
+          "G",
+          CONDITION_COLORS.G,
+          CONDITION_COLORS.U,
         ],
         "circle-stroke-width": satellite
           ? 1.2

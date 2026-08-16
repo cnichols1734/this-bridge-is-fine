@@ -7,9 +7,11 @@ import { fetchBridge, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
 import {
   CHICAGO,
   CONDITION_FILTERS,
+  COPY,
+  conditionClass,
   conditionVisible,
   formatCrossings,
-  scoreBand,
+  officialCondition,
   readConditionFilter,
   readPermalink,
   viewIsAway,
@@ -17,13 +19,9 @@ import {
   writePermalink,
 } from "./format.js";
 
-function conditionClass(bridge) {
-  const restricted = ["K", "P", "R", "D"].includes(bridge.status);
-  return `dot ${bridge.condition || "G"}${restricted ? " restricted" : ""}`;
-}
-
 function Row({ bridge, selected, onSelect, showScore }) {
-  const band = scoreBand(bridge.score);
+  const cond = officialCondition(bridge.condition);
+  const condLabel = bridge.condition_label || "Unknown";
   return (
     <button
       type="button"
@@ -37,19 +35,19 @@ function Row({ bridge, selected, onSelect, showScore }) {
           {bridge.facility_carried || "Unnamed structure"}
         </div>
         <div className="row-meta">
-          {bridge.condition_label}
+          <span className={`cond cond-${cond}`}>{condLabel}</span>
           {bridge.distance_km != null ? ` · ${bridge.distance_km} km` : ""}
           {bridge.year_built ? ` · ${bridge.year_built}` : ""}
         </div>
         {bridge.headline ? <div className="row-head">{bridge.headline}</div> : null}
       </span>
-      {showScore && band ? (
+      {showScore && bridge.score != null ? (
         <span
-          className={`row-score tone-${band.tone}`}
-          aria-label={`${band.word}, scores ${bridge.score} of 100`}
+          className="row-score"
+          aria-label={`${COPY.scoreHeading} ${bridge.score} of 100. ${COPY.rankNote}`}
         >
           <span className="row-score-n">{bridge.score}</span>
-          <span className="row-score-word">{band.short}</span>
+          <span className="row-score-word">{COPY.scoreHeading}</span>
         </span>
       ) : null}
     </button>
@@ -239,10 +237,10 @@ export default function App() {
     fetchHealth()
       .then((health) => {
         if (health.ingest_status === "empty") {
-          setStale("Inventory is empty. Run the ingest.");
+          setStale(COPY.inventoryEmpty);
         }
       })
-      .catch(() => setStale("Inventory unreachable."));
+      .catch(() => setStale(COPY.inventoryDown));
   }, []);
 
   useEffect(() => {
@@ -303,17 +301,15 @@ export default function App() {
 
   const pulseNumber = stats ? formatCrossings(stats.daily_crossings_on_poor) : "—";
   const pulseCopy = stats
-    ? `${stats.poor.toLocaleString()} Poor of ${stats.total.toLocaleString()} in view. Daily crossings on Poor structures.`
-    : "Move the map. The count is for this view.";
+    ? `${stats.poor.toLocaleString()} Poor of ${stats.total.toLocaleString()} in view. ${COPY.poorDefinition}`
+    : COPY.pulseMove;
 
   return (
     <div className={`app sheet-${sheet}${detail ? " has-place" : ""}`}>
       <aside className="col col-left">
         <header className="brand">
           <div className="wordmark">This Bridge Is Fine</div>
-          <p className="tag">
-            The National Bridge Inventory, starting with the one under you.
-          </p>
+          <p className="tag">{COPY.tagline}</p>
           <SearchBox onPick={goToPlace} near={userLocation || center} />
           <button className="locate" type="button" onClick={locate}>
             Use my location
@@ -322,15 +318,13 @@ export default function App() {
         {error ? <div className="error">{error}</div> : null}
         {hint ? <div className="hint">{hint}</div> : null}
         <div className="section-head">
-          <div className="section-label">Nearest</div>
+          <div className="section-label">{COPY.nearest}</div>
         </div>
         <div className="list">
           {list.length === 0 && !hint ? (
-            <div className="empty">
-              Zoom in. The inventory is point data — it gets honest at city scale.
-            </div>
-          ) : shownList.length === 0 ? (
-            <div className="empty">No bridges in view for the conditions you left on.</div>
+            <div className="empty">{COPY.zoomHint}</div>
+          ) : list.length === 0 ? null : shownList.length === 0 ? (
+            <div className="empty">{COPY.emptyFilter}</div>
           ) : (
             shownList.map((bridge) => (
               <Row
@@ -358,6 +352,7 @@ export default function App() {
           visibleConditions={visibleConditions}
         />
         <div className="map-search">
+          <div className="map-brand">This Bridge Is Fine</div>
           <SearchBox onPick={goToPlace} near={userLocation || center} />
         </div>
         {away && userLocation ? (
@@ -379,58 +374,60 @@ export default function App() {
             <Detail bridge={detail} onClose={closeDetail} />
           </div>
         ) : null}
-        <div className="basemap" role="group" aria-label="Map type">
-          <button
-            type="button"
-            className={basemap === "map" ? "is-on" : ""}
-            aria-pressed={basemap === "map"}
-            onClick={() => chooseBasemap("map")}
-          >
-            Map
-          </button>
-          <button
-            type="button"
-            className={basemap === "satellite" ? "is-on" : ""}
-            aria-pressed={basemap === "satellite"}
-            onClick={() => chooseBasemap("satellite")}
-          >
-            Satellite
-          </button>
-        </div>
-        <div className="legend" role="group" aria-label="Filter by condition">
-          {CONDITION_FILTERS.map((item) => {
-            const on = visibleConditions.includes(item.code);
-            return (
-              <button
-                key={item.code}
-                type="button"
-                className={`${item.code}${on ? " is-on" : ""}`}
-                aria-pressed={on}
-                title={on ? `Hide ${item.label}` : `Show ${item.label}`}
-                onClick={() => toggleCondition(item.code)}
-              >
-                <i />
-                {item.label}
-              </button>
-            );
-          })}
+        <div className="map-dock">
+          <div className="basemap" role="group" aria-label="Map type">
+            <button
+              type="button"
+              className={basemap === "map" ? "is-on" : ""}
+              aria-pressed={basemap === "map"}
+              onClick={() => chooseBasemap("map")}
+            >
+              Map
+            </button>
+            <button
+              type="button"
+              className={basemap === "satellite" ? "is-on" : ""}
+              aria-pressed={basemap === "satellite"}
+              onClick={() => chooseBasemap("satellite")}
+            >
+              Satellite
+            </button>
+          </div>
+          <div className="legend" role="group" aria-label="Filter by condition">
+            {CONDITION_FILTERS.map((item) => {
+              const on = visibleConditions.includes(item.code);
+              return (
+                <button
+                  key={item.code}
+                  type="button"
+                  className={`${item.code}${on ? " is-on" : ""}`}
+                  aria-pressed={on}
+                  title={on ? `Hide ${item.label}` : `Show ${item.label}`}
+                  onClick={() => toggleCondition(item.code)}
+                >
+                  <i />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         {stale ? <div className="banner">{stale}</div> : null}
       </main>
 
       <aside className="col col-right">
         <div className="pulse">
-          <div className="pulse-label">Daily crossings on Poor</div>
+          <div className="pulse-label">{COPY.pulseLabel}</div>
           <div className="pulse-number">{pulseNumber}</div>
           <p className="pulse-copy">{pulseCopy}</p>
         </div>
         <div className="section-head">
-          <div className="section-label">Lowest scores in view</div>
+          <div className="section-label">{COPY.lowestScores}</div>
           <RankNote />
         </div>
         <div className="list">
           {shownWorst.length === 0 ? (
-            <div className="empty">Nothing to flag in this view.</div>
+            <div className="empty">{COPY.emptyWorst}</div>
           ) : (
             shownWorst.map((bridge) => (
               <Row
@@ -454,23 +451,26 @@ export default function App() {
         onDismiss={detail ? closeDetail : undefined}
       >
         {detail ? (
-          <Detail bridge={detail} onClose={closeDetail} />
+          <>
+            <Detail bridge={detail} onClose={closeDetail} />
+            <p className="sheet-legal">{COPY.poorDefinition}</p>
+          </>
         ) : (
           <>
             <div className="sheet-pulse sheet-drag" onClick={() => setSheet("half")}>
-              <div className="pulse-label">Daily crossings on Poor</div>
+              <div className="pulse-label">{COPY.pulseLabel}</div>
               <div className="pulse-number">{pulseNumber}</div>
               <p className="pulse-copy">{pulseCopy}</p>
             </div>
             {sheet !== "peek" ? (
               <div className="section-head">
-                <div className="section-label">Lowest scores in view</div>
+                <div className="section-label">{COPY.lowestScores}</div>
                 <RankNote />
               </div>
             ) : null}
             <div className="list">
               {shownWorst.length === 0 ? (
-                <div className="empty">Nothing to flag in this view.</div>
+                <div className="empty">{COPY.emptyWorst}</div>
               ) : (
                 (sheet === "peek" ? shownWorst.slice(0, 2) : shownWorst).map((bridge) => (
                   <Row

@@ -296,7 +296,7 @@ def create_app() -> Flask:
                 {
                     "type": "FeatureCollection",
                     "features": [],
-                    "hint": "Zoom in. The inventory is point data — it gets honest at city scale.",
+                    "hint": "Zoom in to city scale to see structures.",
                     "capped": False,
                 }
             )

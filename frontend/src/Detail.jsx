@@ -1,10 +1,12 @@
 import {
-  formatAdt,
-  formatInspect,
+  COPY,
   RANK_NOTE,
   RATING_NOTE,
-  ratingBand,
-  scoreBand,
+  formatAdt,
+  formatInspect,
+  officialCondition,
+  ratingClass,
+  ratingWord,
 } from "./format.js";
 
 const ORDER = ["deck", "superstructure", "substructure", "culvert"];
@@ -16,12 +18,7 @@ const NAMES = {
 };
 
 export function RankNote() {
-  return (
-    <p className="rank-note">
-      <span aria-hidden="true">★</span>
-      {RANK_NOTE}
-    </p>
-  );
+  return <p className="rank-note">{RANK_NOTE}</p>;
 }
 
 export default function Detail({ bridge, onClose }) {
@@ -29,14 +26,14 @@ export default function Detail({ bridge, onClose }) {
   const ratings = bridge.ratings || {};
   const title = bridge.facility_carried || "Unnamed structure";
   const score = bridge.score;
-  const band = scoreBand(score);
+  const cond = officialCondition(bridge.condition);
+  const condLabel = bridge.condition_label || "Unknown";
   const full = Boolean(bridge.ratings);
   const parts = ORDER.map((key) => {
     const item = ratings[key];
     if (!item || item.value == null) return null;
-    const low = bridge.worst_component === key;
     return (
-      <div className={`rating${low ? " is-low" : ""}`} key={key}>
+      <div className={ratingClass(item.value)} key={key}>
         <div className="rating-name">{NAMES[key]}</div>
         <div className="rating-track">
           <div
@@ -45,7 +42,7 @@ export default function Detail({ bridge, onClose }) {
           />
         </div>
         <div className="rating-n">
-          <span className="rating-word">{ratingBand(item.value)}</span>
+          <span className="rating-word">{ratingWord(item.value, item.word)}</span>
           <span>{item.value}/9</span>
         </div>
       </div>
@@ -58,13 +55,18 @@ export default function Detail({ bridge, onClose }) {
         <div>
           <h2 className="place-title">{title}</h2>
           <p className="place-meta">
+            <span className={`cond cond-${cond}`}>{condLabel}</span>
             {[
-              bridge.condition_label,
               formatAdt(bridge.adt, bridge.adt_suspect),
               bridge.year_built,
             ]
               .filter(Boolean)
-              .join(" · ")}
+              .map((bit, i) => (
+                <span key={i}>
+                  {" · "}
+                  {bit}
+                </span>
+              ))}
           </p>
         </div>
         {onClose ? (
@@ -79,15 +81,15 @@ export default function Detail({ bridge, onClose }) {
         ) : null}
       </header>
 
-      {band ? (
+      {score != null ? (
         <div
-          className={`concern tone-${band.tone}`}
-          aria-label={`${band.word}. Scores ${score} out of 100, where higher is better. ${RANK_NOTE}`}
+          className="concern"
+          aria-label={`${COPY.scoreHeading} ${score} out of 100, where higher is better. ${RANK_NOTE}`}
         >
-          <div className="concern-word">{band.word}</div>
+          <div className="concern-kicker">{COPY.scoreHeading}</div>
+          <div className="concern-word">{score}</div>
           <div className="concern-meta">
-            <span className="concern-n">{score}</span>
-            <span className="concern-of">/ 100 · higher is better</span>
+            <span className="concern-of">{COPY.scoreMeta}</span>
           </div>
           <div className="concern-bar" aria-hidden="true">
             <div className="concern-fill" style={{ width: `${score}%` }} />
