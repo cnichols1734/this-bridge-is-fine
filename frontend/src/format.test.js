@@ -118,7 +118,10 @@ test("user-facing strings stay dry and civic", () => {
   assert.equal(COPY.driveWorst, "Worst on this drive");
   assert.equal(COPY.driveNone, "No driving route for these points.");
   assert.equal(COPY.driveDown, "Routing is unavailable.");
-  assert.equal(COPY.locationDenied, "Location is off. Using the map center.");
+  assert.equal(
+    COPY.locationDenied,
+    "Location is off for this site. Enable it in Safari or Settings.",
+  );
   assert.equal(COPY.locationPreciseOff, "Precise location is unavailable.");
   assert.equal(COPY.driveLocating, "Finding your location.");
   assert.ok(!Object.values(COPY).includes("Location is approximate. Using the map center."));

@@ -122,14 +122,16 @@ def test_drive_start_waits_for_a_fresh_precise_fix():
     fmt = (ROOT / "frontend" / "src" / "format.js").read_text()
     assert "maximumAge: 0" in geo
     assert "maximumAge: 4000" not in geo
-    assert "waitForPreciseFix" in geo
-    assert "waitForPreciseFix" in app
+    assert "startPreciseWatch" in geo
+    assert "startPreciseWatch" in app
+    assert "getCurrentPosition" in geo
     open_drive = app.split("const openDrive")[1].split("const confirmTrip")[0]
-    assert "waitForPreciseFix" in open_drive
-    assert "setTripStart(null)" in open_drive
-    assert "onFix" in open_drive
+    locate = app.split("const locate =")[1].split("const goToPlace")[0]
+    assert "beginWatch" in open_drive
+    assert "beginWatch" in locate
+    assert ".then(" not in locate
     assert "userLocation" not in open_drive
-    assert "Location is approximate. Using the map center." not in fmt
+    assert "Location is off for this site. Enable it in Safari or Settings." in fmt
     assert "Finding your location." in fmt
     assert "shouldFetchHits" in (ROOT / "frontend" / "src" / "SearchBox.jsx").read_text()
     assert "pickedQuery" in (ROOT / "frontend" / "src" / "SearchBox.jsx").read_text()
@@ -146,8 +148,10 @@ def test_map_has_an_always_visible_locate_control():
     assert 'className="recenter"' in app
     assert "away && userLocation" not in app
     assert "locate()" in app
-    assert "refreshPrecise(true)" in app
+    assert "busy={locating}" in app
     assert "My location" in fmt
+    assert ".locate-spin" in css
+    assert "locate-note" in app
     assert ".locate-btn" in css
     assert "color: #0071e3" not in css.split(".locate-btn")[1][:400]
 

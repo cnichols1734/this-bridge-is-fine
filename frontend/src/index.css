@@ -181,6 +181,41 @@ button {
   background: var(--line);
 }
 
+.locate-btn.is-busy,
+.locate-btn.is-on {
+  background: var(--well);
+}
+
+.locate-spin {
+  width: 18px;
+  height: 18px;
+  border: 1.7px solid var(--line);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: locate-spin 0.7s linear infinite;
+}
+
+@keyframes locate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.locate-note {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  z-index: 4;
+  max-width: 16rem;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
 .brand-actions {
   display: flex;
   gap: 12px;
@@ -1376,6 +1411,14 @@ button {
     bottom: calc(var(--sheet-h) + 12px);
   }
 
+  .app.sheet-peek .locate-note {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+    bottom: calc(var(--sheet-h) + 64px);
+  }
+
   .app.sheet-half .recenter,
   .app.sheet-full .recenter {
     top: calc(10px + env(safe-area-inset-top));
@@ -1731,5 +1774,10 @@ button {
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
+  }
+
+  .locate-spin {
+    animation: none;
+    border-top-color: var(--ink);
   }
 }

@@ -7,9 +7,9 @@ import Sheet, { detentHeight } from "./Sheet.jsx";
 import { fetchBridge, fetchDrive, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
 import {
   isPermissionDenied,
+  isPreciseFix,
   shouldAcceptFix,
-  waitForPreciseFix,
-  watchPrecisePosition,
+  startPreciseWatch,
 } from "./geo.js";
 import { ApproachCard, DriveButton, LocateButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
 import {
@@ -192,6 +192,8 @@ export default function App() {
   const [trip, setTrip] = useState(null);
   const [tripBusy, setTripBusy] = useState(false);
   const [fixingStart, setFixingStart] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locateNote, setLocateNote] = useState(null);
   const [tripError, setTripError] = useState(null);
   const [dropMode, setDropMode] = useState(false);
   const [dropEditing, setDropEditing] = useState(null);
@@ -212,6 +214,7 @@ export default function App() {
   const lastFixAt = useRef(0);
   const lastFix = useRef(null);
   const fixGen = useRef(0);
+  const geoWatch = useRef(null);
 
   const toggleCondition = useCallback((code) => {
     setVisibleConditions((current) => {
@@ -358,31 +361,23 @@ export default function App() {
     return COPY.locationPreciseOff;
   }, []);
 
-  const refreshPrecise = useCallback(
-    (force = false, onFix) => {
-      if (!force && Date.now() - lastFixAt.current < 8000 && userLocation) {
-        onFix?.(userLocation);
-        return Promise.resolve(userLocation);
-      }
-      return waitForPreciseFix({
-        onFix: (fix) => {
-          const applied = applyFix(fix);
-          if (!applied) return;
-          setNavNote(null);
-          onFix?.(applied);
-        },
-      })
-        .then((result) => {
-          setNavNote(null);
-          return applyFix(result.fix) || result.fix;
-        })
-        .catch((err) => {
-          setNavNote(locationNote(err));
-          return null;
-        });
+  const stopGeoWatch = useCallback(() => {
+    geoWatch.current?.();
+    geoWatch.current = null;
+  }, []);
+
+  const beginWatch = useCallback(
+    (onFix, onError) => {
+      stopGeoWatch();
+      geoWatch.current = startPreciseWatch(onFix, onError);
     },
-    [applyFix, locationNote, userLocation]
+    [stopGeoWatch]
   );
+
+  const refreshPrecise = useCallback((onFix) => {
+    if (lastFix.current) onFix?.(lastFix.current);
+    return lastFix.current;
+  }, []);
 
   const mapCenterStart = useCallback(() => {
     const map = mapRef.current;
@@ -394,10 +389,28 @@ export default function App() {
   }, [center]);
 
   const locate = useCallback(() => {
-    refreshPrecise(true, (fix) => flyHome(fix)).then((fix) => {
-      if (fix) flyHome(fix);
-    });
-  }, [flyHome, refreshPrecise]);
+    beginWatch(
+      (fix) => {
+        const applied = applyFix(fix);
+        if (!applied) return;
+        setLocateNote(null);
+        setNavNote(null);
+        setLocating(false);
+        flyHome(applied);
+        if (isPreciseFix(applied) && !navigatingRef.current) stopGeoWatch();
+      },
+      (err) => {
+        setLocating(false);
+        const note = locationNote(err);
+        setLocateNote(note);
+        setNavNote(note);
+      }
+    );
+    setLocateNote(null);
+    setNavNote(null);
+    setLocating(true);
+    if (lastFix.current) flyHome(lastFix.current);
+  }, [applyFix, beginWatch, flyHome, locationNote, stopGeoWatch]);
 
   const goToPlace = useCallback((hit) => {
     setLastPlace(hit);
@@ -432,31 +445,17 @@ export default function App() {
     setTrip(null);
     setTripBusy(false);
     setFixingStart(false);
+    setLocating(false);
+    setLocateNote(null);
     setTripError(null);
+    stopGeoWatch();
     setDropMode(false);
     setDropEditing(null);
     setSheet("peek");
-  }, []);
+  }, [stopGeoWatch]);
 
   const openDrive = useCallback(() => {
     const gen = ++fixGen.current;
-    setTripStart(null);
-    if (lastPlace) {
-      setTripEnd({
-        lng: lastPlace.lng,
-        lat: lastPlace.lat,
-        label: lastPlace.label,
-      });
-    }
-    setTrip(null);
-    setTripDraft(null);
-    setTripError(null);
-    setNavNote(null);
-    setDropMode(false);
-    setDropEditing(null);
-    setTripOpen(true);
-    setFixingStart(true);
-    setSheet("peek");
     const adoptHere = (fix) => {
       const applied = applyFix(fix);
       if (!applied) return;
@@ -467,60 +466,77 @@ export default function App() {
         return { ...applied, label: COPY.driveHere };
       });
     };
-    waitForPreciseFix({
-      onFix: (fix) => {
+    beginWatch(
+      (fix) => {
         if (gen !== fixGen.current) return;
         setFixingStart(false);
+        setLocating(false);
         setNavNote(null);
+        setLocateNote(null);
         adoptHere(fix);
+        flyHome(fix);
       },
-    })
-      .then((result) => {
+      (err) => {
         if (gen !== fixGen.current) return;
         setFixingStart(false);
-        if (result.fix) {
-          setNavNote(null);
-          adoptHere(result.fix);
-        }
-      })
-      .catch((err) => {
-        if (gen !== fixGen.current) return;
-        setFixingStart(false);
-        setNavNote(locationNote(err));
+        setLocating(false);
+        const note = locationNote(err);
+        setLocateNote(note);
+        setNavNote(note);
         setTripStart(mapCenterStart());
+      }
+    );
+    setLocateNote(null);
+    setNavNote(null);
+    setLocating(true);
+    setFixingStart(true);
+    if (lastFix.current) adoptHere(lastFix.current);
+    if (lastPlace) {
+      setTripEnd({
+        lng: lastPlace.lng,
+        lat: lastPlace.lat,
+        label: lastPlace.label,
       });
-  }, [applyFix, lastPlace, locationNote, mapCenterStart]);
+    }
+    setTrip(null);
+    setTripDraft(null);
+    setTripError(null);
+    setDropMode(false);
+    setDropEditing(null);
+    setTripOpen(true);
+    setSheet("peek");
+  }, [applyFix, beginWatch, flyHome, lastPlace, locationNote, mapCenterStart]);
 
   const confirmTrip = useCallback(() => {
     if (!tripDraft) return;
+    navigatingRef.current = true;
+    beginWatch(
+      (fix) => {
+        const applied = applyFix(fix);
+        if (!applied) return;
+        setLocating(false);
+        setNavNote(null);
+        setLocateNote(null);
+        setNavFix(applied);
+        setFollowOn(true);
+      },
+      (err) => {
+        setLocating(false);
+        setNavNote(locationNote(err));
+        setFollowOn(false);
+      }
+    );
+    setLocating(true);
     setTrip(tripDraft);
     setDropMode(false);
     setSheet("peek");
     setDismissedApproach(new Set());
-    navigatingRef.current = true;
     setNavigating(true);
-    waitForPreciseFix({
-      onFix: (fix) => {
-        const applied = applyFix(fix);
-        if (!applied) return;
-        setNavNote(null);
-        setNavFix(applied);
-        setFollowOn(true);
-      },
-    })
-      .then((result) => {
-        if (!result.fix) return;
-        const applied = applyFix(result.fix);
-        if (!applied) return;
-        setNavNote(null);
-        setNavFix(applied);
-        setFollowOn(true);
-      })
-      .catch((err) => {
-        setNavNote(locationNote(err));
-        setFollowOn(false);
-      });
-  }, [applyFix, locationNote, tripDraft]);
+    if (lastFix.current) {
+      setNavFix(lastFix.current);
+      setFollowOn(true);
+    }
+  }, [applyFix, beginWatch, locationNote, tripDraft]);
 
   const pickTripPoint = useCallback((point) => {
     const labeled = {
@@ -543,6 +559,8 @@ export default function App() {
     setNavigating(false);
     setFollowOn(false);
   }, [tripStart, tripEnd, dropEditing]);
+
+  useEffect(() => () => stopGeoWatch(), [stopGeoWatch]);
 
   useEffect(() => {
     fetchMeta().then(setMeta).catch(() => {});
@@ -618,31 +636,16 @@ export default function App() {
     };
   }, [tripOpen, tripStart, tripEnd]);
 
-  useEffect(() => {
-    if (!navigating) return undefined;
-    const stop = watchPrecisePosition(
-      (fix) => {
-        applyFix(fix);
-        setNavFix(fix);
-      },
-      (err) => {
-        if (isPermissionDenied(err)) setNavNote(COPY.locationDenied);
-      }
-    );
-    return stop;
-  }, [navigating, applyFix]);
-
   const onReady = (map) => {
     mapRef.current = map;
     if (permalink.id) padMap("full");
-    refreshPrecise(true).then((fix) => {
-      if (!fix || permalink.lat) return;
+    if (lastFix.current && !permalink.lat) {
       map.easeTo({
-        center: [fix.lng, fix.lat],
+        center: [lastFix.current.lng, lastFix.current.lat],
         zoom: 11.2,
         duration: 800,
       });
-    });
+    }
   };
 
   useEffect(() => {
@@ -789,7 +792,7 @@ export default function App() {
                 onFocus={() => refreshPrecise()}
               />
               <div className="brand-actions">
-                <LocateButton labeled onClick={locate} />
+                <LocateButton labeled busy={locating} onClick={locate} />
                 <DriveButton onClick={openDrive} />
               </div>
             </>
@@ -875,7 +878,7 @@ export default function App() {
           follow={followCamera}
           followOn={followOn}
           userFix={
-            (tripOpen || navigating) && preciseHere
+            preciseHere
               ? { ...preciseHere, heading: navigating ? followHeading : preciseHere.heading }
               : null
           }
@@ -915,17 +918,37 @@ export default function App() {
           <LocateButton
             className="recenter"
             follow={navigating}
+            busy={locating}
             onClick={() => {
               if (navigating) {
-                refreshPrecise(true).then((fix) => {
-                  if (fix) setNavFix(fix);
+                beginWatch(
+                  (fix) => {
+                    const applied = applyFix(fix);
+                    if (!applied) return;
+                    setLocating(false);
+                    setNavFix(applied);
+                    setFollowOn(true);
+                  },
+                  (err) => {
+                    setLocating(false);
+                    setNavNote(locationNote(err));
+                  }
+                );
+                setLocating(true);
+                if (lastFix.current) {
+                  setNavFix(lastFix.current);
                   setFollowOn(true);
-                });
+                }
                 return;
               }
               locate();
             }}
           />
+        ) : null}
+        {locateNote && !navigating ? (
+          <p className="locate-note" role="status">
+            {locateNote}
+          </p>
         ) : null}
         {detail && selectedId ? (
           <div className="map-popup" role="dialog" aria-label="Bridge file">
