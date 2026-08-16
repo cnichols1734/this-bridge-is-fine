@@ -67,7 +67,7 @@ def test_trip_errors_are_not_desktop_only():
     app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
     bar = (ROOT / "frontend" / "src" / "TripBar.jsx").read_text()
     assert "error={tripError}" in app
-    assert "tripOpen && (tripError || tripBusy)" in app
+    assert "tripOpen && (tripError || tripBusy || fixingStart)" in app
     assert "trip-error" in bar
     assert "Daily crossings on Poor" not in bar
 
@@ -114,6 +114,22 @@ def test_follow_camera_is_snappy():
     view = (ROOT / "frontend" / "src" / "MapView.jsx").read_text()
     assert "duration: 260" in view
     assert "duration: 900" not in view
+
+
+def test_drive_start_waits_for_a_fresh_precise_fix():
+    geo = (ROOT / "frontend" / "src" / "geo.js").read_text()
+    app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
+    fmt = (ROOT / "frontend" / "src" / "format.js").read_text()
+    assert "maximumAge: 0" in geo
+    assert "maximumAge: 4000" not in geo
+    assert "waitForPreciseFix" in geo
+    assert "waitForPreciseFix" in app
+    open_drive = app.split("const openDrive")[1].split("const confirmTrip")[0]
+    assert "waitForPreciseFix" in open_drive
+    assert "setTripStart(null)" in open_drive
+    assert "userLocation" not in open_drive
+    assert "Location is approximate. Using the map center." in fmt
+    assert "Finding your location." in fmt
 
 
 def test_drive_is_a_real_button():

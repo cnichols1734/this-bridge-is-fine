@@ -5,7 +5,14 @@ import SearchBox from "./SearchBox.jsx";
 import TripBar from "./TripBar.jsx";
 import Sheet, { detentHeight } from "./Sheet.jsx";
 import { fetchBridge, fetchDrive, fetchHealth, fetchMeta, fetchViewport } from "./api.js";
-import { getPrecisePosition, isPermissionDenied, watchPrecisePosition } from "./geo.js";
+import {
+  getPrecisePosition,
+  isApproximateError,
+  isPermissionDenied,
+  isPreciseFix,
+  waitForPreciseFix,
+  watchPrecisePosition,
+} from "./geo.js";
 import { ApproachCard, DriveButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
 import {
   CHICAGO,
@@ -186,6 +193,7 @@ export default function App() {
   const [tripDraft, setTripDraft] = useState(null);
   const [trip, setTrip] = useState(null);
   const [tripBusy, setTripBusy] = useState(false);
+  const [fixingStart, setFixingStart] = useState(false);
   const [tripError, setTripError] = useState(null);
   const [dropMode, setDropMode] = useState(false);
   const [dropEditing, setDropEditing] = useState(null);
@@ -204,6 +212,7 @@ export default function App() {
   const wasDrivePinsOn = useRef(false);
   const navigatingRef = useRef(false);
   const lastFixAt = useRef(0);
+  const fixGen = useRef(0);
 
   const toggleCondition = useCallback((code) => {
     setVisibleConditions((current) => {
@@ -335,15 +344,21 @@ export default function App() {
   }, []);
 
   const applyFix = useCallback((fix) => {
-    if (!fix) return null;
+    if (!fix || !isPreciseFix(fix)) return null;
     lastFixAt.current = fix.at || Date.now();
     setUserLocation(fix);
     return fix;
   }, []);
 
+  const locationNote = useCallback((err) => {
+    if (isPermissionDenied(err)) return COPY.locationDenied;
+    if (isApproximateError(err)) return COPY.locationApproximate;
+    return COPY.locationPreciseOff;
+  }, []);
+
   const refreshPrecise = useCallback(
     (force = false) => {
-      if (!force && Date.now() - lastFixAt.current < 8000 && userLocation) {
+      if (!force && Date.now() - lastFixAt.current < 8000 && userLocation && isPreciseFix(userLocation)) {
         return Promise.resolve(userLocation);
       }
       return getPrecisePosition()
@@ -352,14 +367,21 @@ export default function App() {
           return applyFix(fix);
         })
         .catch((err) => {
-          setNavNote(
-            isPermissionDenied(err) ? COPY.locationDenied : COPY.locationPreciseOff
-          );
+          setNavNote(locationNote(err));
           return null;
         });
     },
-    [applyFix, userLocation]
+    [applyFix, locationNote, userLocation]
   );
+
+  const mapCenterStart = useCallback(() => {
+    const map = mapRef.current;
+    if (map) {
+      const here = map.getCenter();
+      return { lng: here.lng, lat: here.lat, label: COPY.driveCenter };
+    }
+    return { ...center, label: COPY.driveCenter };
+  }, [center]);
 
   const locate = useCallback(() => {
     refreshPrecise(true).then((fix) => {
@@ -384,19 +406,8 @@ export default function App() {
     });
   }, [tripOpen]);
 
-  const defaultStart = useCallback(() => {
-    const map = mapRef.current;
-    if (userLocation) {
-      return { ...userLocation, label: COPY.driveHere };
-    }
-    if (map) {
-      const here = map.getCenter();
-      return { lng: here.lng, lat: here.lat, label: COPY.driveCenter };
-    }
-    return { ...center, label: COPY.driveCenter };
-  }, [userLocation, center]);
-
   const clearTrip = useCallback(() => {
+    fixGen.current += 1;
     tripKey.current = "";
     navigatingRef.current = false;
     setNavigating(false);
@@ -410,6 +421,7 @@ export default function App() {
     setTripDraft(null);
     setTrip(null);
     setTripBusy(false);
+    setFixingStart(false);
     setTripError(null);
     setDropMode(false);
     setDropEditing(null);
@@ -417,8 +429,8 @@ export default function App() {
   }, []);
 
   const openDrive = useCallback(() => {
-    const origin = defaultStart();
-    setTripStart(origin);
+    const gen = ++fixGen.current;
+    setTripStart(null);
     if (lastPlace) {
       setTripEnd({
         lng: lastPlace.lng,
@@ -429,20 +441,32 @@ export default function App() {
     setTrip(null);
     setTripDraft(null);
     setTripError(null);
+    setNavNote(null);
     setDropMode(false);
     setDropEditing(null);
     setTripOpen(true);
+    setFixingStart(true);
     setSheet("peek");
-    refreshPrecise(true).then((fix) => {
-      if (!fix) return;
-      setTripStart((current) => {
-        if (!current || current.label === COPY.driveCenter) {
-          return { ...fix, label: COPY.driveHere };
+    waitForPreciseFix()
+      .then((result) => {
+        if (gen !== fixGen.current) return;
+        setFixingStart(false);
+        if (result.precise) {
+          setNavNote(null);
+          applyFix(result.fix);
+          setTripStart({ ...result.fix, label: COPY.driveHere });
+          return;
         }
-        return current;
+        setNavNote(COPY.locationApproximate);
+        setTripStart(mapCenterStart());
+      })
+      .catch((err) => {
+        if (gen !== fixGen.current) return;
+        setFixingStart(false);
+        setNavNote(locationNote(err));
+        setTripStart(mapCenterStart());
       });
-    });
-  }, [defaultStart, lastPlace, refreshPrecise]);
+  }, [applyFix, lastPlace, locationNote, mapCenterStart]);
 
   const confirmTrip = useCallback(() => {
     if (!tripDraft) return;
@@ -452,15 +476,23 @@ export default function App() {
     setDismissedApproach(new Set());
     navigatingRef.current = true;
     setNavigating(true);
-    refreshPrecise(true).then((fix) => {
-      if (fix) {
-        setNavFix(fix);
-        setFollowOn(true);
-        return;
-      }
-      setFollowOn(false);
-    });
-  }, [tripDraft, refreshPrecise]);
+    waitForPreciseFix()
+      .then((result) => {
+        if (result.precise) {
+          setNavNote(null);
+          applyFix(result.fix);
+          setNavFix(result.fix);
+          setFollowOn(true);
+          return;
+        }
+        setNavNote(COPY.locationApproximate);
+        setFollowOn(false);
+      })
+      .catch((err) => {
+        setNavNote(locationNote(err));
+        setFollowOn(false);
+      });
+  }, [applyFix, locationNote, tripDraft]);
 
   const pickTripPoint = useCallback((point) => {
     const labeled = {
@@ -566,13 +598,11 @@ export default function App() {
         setNavFix(fix);
       },
       (err) => {
-        setNavNote(
-          isPermissionDenied(err) ? COPY.locationDenied : COPY.locationPreciseOff
-        );
+        setNavNote(locationNote(err));
       }
     );
     return stop;
-  }, [navigating, applyFix]);
+  }, [navigating, applyFix, locationNote]);
 
   const onReady = (map) => {
     mapRef.current = map;
@@ -663,7 +693,10 @@ export default function App() {
   }, [tripOpen, tripPayload, loadViewport]);
 
   const roomySheet = Boolean(tripOpen && (tripPayload || tripError) && !detail);
-  const searchNear = userLocation || center;
+  const searchNear = userLocation && isPreciseFix(userLocation) ? userLocation : center;
+  const preciseHere =
+    (navFix && isPreciseFix(navFix) ? navFix : null) ||
+    (userLocation && isPreciseFix(userLocation) ? userLocation : null);
 
   const tripComposer = tripOpen ? (
     <TripBar
@@ -672,6 +705,8 @@ export default function App() {
       near={searchNear}
       dropping={dropMode}
       busy={tripBusy}
+      locating={fixingStart}
+      note={navNote}
       error={tripError}
       onFocusStart={() => {
         setDropEditing("start");
@@ -816,8 +851,8 @@ export default function App() {
           follow={followCamera}
           followOn={followOn}
           userFix={
-            navigating && (navFix || userLocation)
-              ? { ...(navFix || userLocation), heading: followHeading }
+            (tripOpen || navigating) && preciseHere
+              ? { ...preciseHere, heading: navigating ? followHeading : preciseHere.heading }
               : null
           }
           onFollowBreak={() => setFollowOn(false)}
@@ -1034,11 +1069,11 @@ export default function App() {
               </>
             ) : null}
           </>
-        ) : tripOpen && (tripError || tripBusy) ? (
+        ) : tripOpen && (tripError || tripBusy || fixingStart) ? (
           <div className="sheet-pulse sheet-drag trip-pulse trip-status">
             <div className="pulse-label">{COPY.drive}</div>
             <p className={`pulse-copy${tripError ? " trip-error" : ""}`}>
-              {tripError || COPY.driveLooking}
+              {tripError || (fixingStart ? COPY.driveLocating : COPY.driveLooking)}
             </p>
           </div>
         ) : (

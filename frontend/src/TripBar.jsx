@@ -7,6 +7,8 @@ export default function TripBar({
   near,
   dropping,
   busy,
+  locating,
+  note,
   error,
   onPickStart,
   onPickEnd,
@@ -68,8 +70,10 @@ export default function TripBar({
         </button>
       </div>
       {error ? <p className="trip-error">{error}</p> : null}
+      {note && !error ? <p className="trip-hint">{note}</p> : null}
       {dropping && !error ? <p className="trip-hint">{COPY.driveDropHint}</p> : null}
-      {busy && !error ? <p className="trip-hint">{COPY.driveLooking}</p> : null}
+      {locating && !error ? <p className="trip-hint">{COPY.driveLocating}</p> : null}
+      {busy && !error && !locating ? <p className="trip-hint">{COPY.driveLooking}</p> : null}
     </div>
   );
 }
