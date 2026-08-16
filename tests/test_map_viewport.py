@@ -46,7 +46,7 @@ def _fetch_from(fixtures):
             rows = [row for row in rows if row.bridge_condition == condition]
         if exclude_condition is not None:
             rows = [row for row in rows if row.bridge_condition != exclude_condition]
-        rows = sorted(rows, key=lambda row: row.unease_score or 0, reverse=True)
+        rows = sorted(rows, key=lambda row: row.unease_score if row.unease_score is not None else 100)
         return rows[:limit]
 
     return fetch
@@ -191,8 +191,8 @@ def test_cap_is_honored_at_low_zoom(monkeypatch):
     assert set(_conditions(payload)) == {"P"}
 
 
-def test_poor_survives_cap_that_would_be_all_high_unease(monkeypatch):
-    """Quiet Poor must not lose to busy Good/Fair when zoomed out."""
+def test_poor_survives_cap_that_would_be_all_high_scores(monkeypatch):
+    """Zoomed out, official Poor is filled first. City zoom then ranks by lowest score."""
     monkeypatch.setattr(api, "_fetch_map_bridges", _fetch_from(FIXTURES))
     rows, capped = _query_viewport_bridges(DummyDB(), WIDE, 6, cap=3)
     conditions = [row.bridge_condition for row in rows]
@@ -201,13 +201,12 @@ def test_poor_survives_cap_that_would_be_all_high_unease(monkeypatch):
 
     city_rows, _city_capped = _query_viewport_bridges(DummyDB(), WIDE, 11, cap=3)
     city_conditions = [row.bridge_condition for row in city_rows]
-    assert "P" not in city_conditions
-    assert set(city_conditions) <= {"G", "F"}
+    assert city_conditions == ["P", "P", "P"]
 
     payload = _features(_client(monkeypatch, cap=3), US_BBOX, 6)
     assert set(_conditions(payload)) == {"P"}
     city = _features(_client(monkeypatch, cap=3), US_BBOX, 11)
-    assert "P" not in _conditions(city)
+    assert set(_conditions(city)) == {"P"}
 
 
 def test_state_zoom_fills_remaining_cap_with_others(monkeypatch):

@@ -6,10 +6,12 @@ import {
   COPY,
   RANK_NOTE,
   RATING_NOTE,
+  SCORE_BANDS,
   conditionClass,
   conditionVisible,
   driveBridgesForMap,
   driveBridgesGeojson,
+  formatBuilt,
   formatDriveDistance,
   formatDriveTime,
   formatEta,
@@ -25,6 +27,7 @@ import {
   ratingClass,
   ratingIsPoor,
   ratingWord,
+  scoreBand,
 } from "./format.js";
 
 const FORBIDDEN = [
@@ -87,6 +90,20 @@ test("prefers the API condition word when present", () => {
   assert.equal(ratingWord(7), CONDITION_WORDS[7]);
 });
 
+test("Bridge Score bands follow higher-is-better", () => {
+  assert.equal(scoreBand(98), "Few concerns");
+  assert.equal(scoreBand(85), "Few concerns");
+  assert.equal(scoreBand(84), "Some concerns");
+  assert.equal(scoreBand(70), "Some concerns");
+  assert.equal(scoreBand(55), "Moderate concerns");
+  assert.equal(scoreBand(40), "Elevated concerns");
+  assert.equal(scoreBand(39), "Significant concerns");
+  assert.equal(scoreBand(0), "Significant concerns");
+  assert.equal(SCORE_BANDS[0].min, 85);
+  assert.equal(formatBuilt(1960, 66), "Built 1960 · 66 years old");
+  assert.equal(formatBuilt(2018, 1), "Built 2018 · 1 year old");
+});
+
 test("unknown official condition is not treated as Good", () => {
   assert.equal(conditionVisible({ condition: null }, ["G"]), true);
   assert.equal(conditionVisible({ condition: "G" }, ["F", "P"]), false);
@@ -112,6 +129,9 @@ test("user-facing strings stay dry and civic", () => {
   assert.doesNotMatch(blob, /★/);
   assert.match(COPY.poorDefinition, /scored 4 or below/);
   assert.match(COPY.rankNote, /Not an official grade/);
+  assert.equal(COPY.scoreHeading, "Bridge Score");
+  assert.match(COPY.scoreNote, /not an official safety grade/i);
+  assert.doesNotMatch(blob, /safety score/i);
   assert.equal(COPY.driveUse, "Use this drive");
   assert.equal(COPY.driveAction, "Start a drive");
   assert.equal(COPY.driveBack, "Back");

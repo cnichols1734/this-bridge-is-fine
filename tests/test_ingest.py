@@ -147,5 +147,5 @@ def test_map_feature_is_idempotent():
     assert first["state_code"] == "17"
     assert first["bridge_condition"] == "P"
     assert first["unease_score"] == second["unease_score"]
-    assert first["unease_score"] < 98
+    assert 30 <= first["unease_score"] <= 50
     assert map_feature({**attrs, "LATDD": 0, "LONGDD": 0}) is None

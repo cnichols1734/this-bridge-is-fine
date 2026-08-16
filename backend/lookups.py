@@ -80,6 +80,43 @@ COMPONENT_LABELS = {
     "culvert": "Culvert",
 }
 
+PUBLIC_COMPONENT_LABELS = {
+    "deck": "Road surface",
+    "superstructure": "Support structure",
+    "substructure": "Foundation",
+    "culvert": "Culvert",
+}
+
+NBI_ITEMS = {
+    "deck": "58",
+    "superstructure": "59",
+    "substructure": "60",
+    "culvert": "62",
+    "status": "41",
+    "scour": "113",
+    "fracture": "92A",
+    "inspect_date": "90",
+    "inspect_freq": "91",
+    "adt": "29",
+}
+
+# Item 113. Codes 0–3 are the official scour-critical set. 4 and U are not.
+SCOUR_CODES = {
+    "N": "Not over water",
+    "9": "Foundations above flood elevations",
+    "8": "Evaluated as stable",
+    "7": "Countermeasures installed",
+    "6": "Scour evaluation not completed",
+    "5": "Evaluated as stable",
+    "4": "Stable; protective action required",
+    "3": "Scour-critical; foundations unstable under assessed scour",
+    "2": "Scour-critical; extensive scour, foundations unstable",
+    "1": "Failure considered imminent; closed",
+    "0": "Failed from scour and closed",
+    "U": "Unknown foundation; not evaluated for scour",
+    "T": "Tidal; not evaluated, considered low risk",
+}
+
 
 def _code(value) -> str:
     if value is None:
@@ -148,14 +185,24 @@ def is_fracture_critical(value: str | None) -> bool:
     return _code(value).upper().startswith("Y")
 
 
-def is_scour_critical(value: str | None) -> bool:
+def normalize_scour_code(value: str | None) -> str:
     raw = _code(value)
-    if raw in {"0", "1", "2", "3"}:
-        return True
-    try:
-        return int(raw) <= 3
-    except ValueError:
-        return False
+    if not raw:
+        return ""
+    upper = raw.upper()
+    if upper in {"N", "U", "T"}:
+        return upper
+    return raw
+
+
+def scour_label(value: str | None) -> str | None:
+    code = normalize_scour_code(value)
+    return SCOUR_CODES.get(code)
+
+
+def is_scour_critical(value: str | None) -> bool:
+    """Official scour-critical codes only: 0, 1, 2, 3. Not 4. Not U."""
+    return normalize_scour_code(value) in {"0", "1", "2", "3"}
 
 
 def band_label(code: str | None) -> str:
@@ -165,7 +212,7 @@ def band_label(code: str | None) -> str:
 def official_condition_band(lowest, source: str | None = None) -> str | None:
     """Official NBI G/F/P. Trust the source item; fill from lowest rating if missing.
 
-    FHWA: G = 7–9, F = 5–6, P = 0–4. This is not the public unease ranking.
+    FHWA: G = 7–9, F = 5–6, P = 0–4. This is not the site-generated Bridge Score.
     """
     raw = _code(source).upper()
     if raw in CONDITION_BAND:

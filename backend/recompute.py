@@ -3,6 +3,9 @@
 The ingest owns fetching. This owns nothing but arithmetic: when the scoring
 curve changes, every stored row needs the new number without waiting on a
 624k-row round trip to ArcGIS. Every input it needs is already a column.
+
+The unease_score column stores the public Bridge Score: 0–100, higher is better.
+Run this after deploying a scoring change.
 """
 
 from __future__ import annotations
@@ -13,22 +16,22 @@ from sqlalchemy import select, text
 
 from backend.db import get_session, init_db
 from backend.models import Bridge
-from backend.scoring import unease_score
+from backend.scoring import derive, record_from_bridge
 
 BATCH = 10_000
 
 
-def _score(row) -> int:
-    return unease_score(
-        lowest=row.lowest_rating,
-        adt_capped=row.adt_capped or 0,
-        status=row.status_code,
-        scour=row.scour,
-        fracture=row.fracture,
-        overdue=bool(row.inspect_overdue),
-        year_built=row.year_built,
-        culvert=bool(row.is_culvert),
-    )
+def _payload(row) -> dict:
+    derived = derive(record_from_bridge(row))
+    return {
+        "b_id": row.id,
+        "score": derived["score"],
+        "inspect_overdue": bool(derived["inspect_overdue"]),
+        "headline": derived.get("headline"),
+        "why": derived.get("why"),
+        "age_years": derived.get("age_years"),
+        "scour_critical": bool(derived.get("scour_critical")),
+    }
 
 
 def recompute() -> int:
@@ -38,21 +41,48 @@ def recompute() -> int:
     scanned = 0
     changed = 0
     last_id = 0
-    statement = text("UPDATE bridges SET unease_score = :score WHERE id = :b_id")
+    statement = text(
+        """
+        UPDATE bridges SET
+            unease_score = :score,
+            inspect_overdue = :inspect_overdue,
+            headline = :headline,
+            why = :why,
+            age_years = :age_years,
+            scour_critical = :scour_critical
+        WHERE id = :b_id
+        """
+    )
     try:
         while True:
             rows = db.execute(
                 select(
                     Bridge.id,
+                    Bridge.deck,
+                    Bridge.superstructure,
+                    Bridge.substructure,
+                    Bridge.culvert,
                     Bridge.lowest_rating,
-                    Bridge.adt_capped,
+                    Bridge.bridge_condition,
                     Bridge.status_code,
                     Bridge.scour,
                     Bridge.fracture,
-                    Bridge.inspect_overdue,
                     Bridge.year_built,
-                    Bridge.is_culvert,
+                    Bridge.year_reconstructed,
+                    Bridge.adt,
+                    Bridge.inspect_raw,
+                    Bridge.inspect_date,
+                    Bridge.inspect_freq_months,
+                    Bridge.functional_class,
+                    Bridge.facility_carried,
+                    Bridge.material_code,
+                    Bridge.design_code,
                     Bridge.unease_score,
+                    Bridge.inspect_overdue,
+                    Bridge.headline,
+                    Bridge.why,
+                    Bridge.age_years,
+                    Bridge.scour_critical,
                 )
                 .where(Bridge.id > last_id)
                 .order_by(Bridge.id)
@@ -60,11 +90,18 @@ def recompute() -> int:
             ).all()
             if not rows:
                 break
-            payload = [
-                {"b_id": row.id, "score": fresh}
-                for row in rows
-                if (fresh := _score(row)) != row.unease_score
-            ]
+            payload = []
+            for row in rows:
+                fresh = _payload(row)
+                if (
+                    fresh["score"] != row.unease_score
+                    or fresh["inspect_overdue"] != bool(row.inspect_overdue)
+                    or fresh["headline"] != row.headline
+                    or fresh["why"] != row.why
+                    or fresh["age_years"] != row.age_years
+                    or fresh["scour_critical"] != bool(row.scour_critical)
+                ):
+                    payload.append(fresh)
             if payload:
                 db.execute(statement, payload)
                 db.commit()

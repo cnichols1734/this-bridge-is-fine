@@ -69,7 +69,7 @@ function Row({ bridge, selected, onSelect, showScore, trip }) {
           aria-label={`${COPY.scoreHeading} ${bridge.score} of 100. ${COPY.rankNote}`}
         >
           <span className="row-score-n">{bridge.score}</span>
-          <span className="row-score-word">{COPY.scoreHeading}</span>
+          <span className="row-score-word">{COPY.scoreShort}</span>
         </span>
       ) : null}
     </button>
@@ -952,7 +952,7 @@ export default function App() {
         ) : null}
         {detail && selectedId ? (
           <div className="map-popup" role="dialog" aria-label="Bridge file">
-            <Detail bridge={detail} onClose={closeDetail} />
+            <Detail bridge={detail} onClose={closeDetail} snapshot={meta?.snapshot} />
           </div>
         ) : null}
         <div className="map-dock">
@@ -1072,7 +1072,7 @@ export default function App() {
       >
         {detail ? (
           <>
-            <Detail bridge={detail} onClose={closeDetail} />
+            <Detail bridge={detail} onClose={closeDetail} snapshot={meta?.snapshot} />
             <p className="sheet-legal">{COPY.poorDefinition}</p>
           </>
         ) : tripPayload ? (

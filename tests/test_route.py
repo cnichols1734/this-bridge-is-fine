@@ -220,12 +220,12 @@ def test_extract_steps_keeps_maneuvers():
 
 def test_top_three_worst_are_poor_then_lowest_score():
     rows = [
-        _row(bridge_condition="G", unease_score=10, lowest_rating=8, id="g-ok"),
-        _row(bridge_condition="F", unease_score=40, lowest_rating=5, id="f-mid"),
-        _row(bridge_condition="P", unease_score=20, lowest_rating=4, id="p-quiet"),
-        _row(bridge_condition="P", unease_score=70, lowest_rating=3, id="p-bad"),
-        _row(bridge_condition="G", unease_score=90, lowest_rating=7, id="g-busy"),
-        _row(bridge_condition="F", unease_score=5, lowest_rating=6, id="f-ok"),
+        _row(bridge_condition="G", unease_score=90, lowest_rating=8, id="g-ok"),
+        _row(bridge_condition="F", unease_score=75, lowest_rating=5, id="f-mid"),
+        _row(bridge_condition="P", unease_score=50, lowest_rating=4, id="p-quiet"),
+        _row(bridge_condition="P", unease_score=30, lowest_rating=3, id="p-bad"),
+        _row(bridge_condition="G", unease_score=70, lowest_rating=7, id="g-busy"),
+        _row(bridge_condition="F", unease_score=95, lowest_rating=6, id="f-ok"),
     ]
     worst = pick_worst_on_drive(rows, 3)
     assert [row.id for row in worst] == ["p-bad", "p-quiet", "g-busy"]
@@ -374,7 +374,7 @@ def test_drive_lists_poor_first_and_keeps_full_counts(monkeypatch):
     assert payload["summary"]["capped"] is True
     assert [item["id"] for item in payload["bridges"]] == ["17-POOR", "17-GOOD"]
     assert payload["bridges"][0]["condition"] == "P"
-    assert payload["bridges"][0]["score"] == 60
+    assert payload["bridges"][0]["score"] == 40
     assert payload["bridges"][0]["adt"] == 18000
     assert payload["worst"][0]["id"] == "17-POOR"
     assert payload["route"]["steps"] == []

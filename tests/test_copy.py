@@ -25,6 +25,8 @@ SCAN = [
     ROOT / "frontend" / "src" / "NavOverlay.jsx",
     ROOT / "backend" / "api.py",
     ROOT / "backend" / "route.py",
+    ROOT / "backend" / "explain.py",
+    ROOT / "backend" / "scoring.py",
 ]
 
 
@@ -35,6 +37,13 @@ def test_unknown_condition_is_not_good():
     assert condition_word(None) is None
     assert condition_word(7) == "Good"
     assert condition_word(4) == "Poor"
+
+
+def test_custom_score_is_never_an_official_safety_grade():
+    blob = "\n".join(path.read_text() for path in SCAN)
+    assert "safety score" not in blob.lower()
+    assert "Bridge Score" in blob
+    assert "higher is better" in blob.lower()
 
 
 def test_user_facing_copy_is_dry():

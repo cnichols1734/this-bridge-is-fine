@@ -115,9 +115,35 @@ export const CONDITION_COLORS = {
   U: "#c7c7cc",
 };
 
+export const SCORE_BANDS = [
+  { min: 85, label: "Few concerns" },
+  { min: 70, label: "Some concerns" },
+  { min: 55, label: "Moderate concerns" },
+  { min: 40, label: "Elevated concerns" },
+  { min: 0, label: "Significant concerns" },
+];
+
+export function scoreBand(score) {
+  if (score == null || Number.isNaN(Number(score))) return null;
+  const n = Number(score);
+  for (const band of SCORE_BANDS) {
+    if (n >= band.min) return band.label;
+  }
+  return "Significant concerns";
+}
+
+export function formatBuilt(year, ageYears) {
+  if (!year) return null;
+  if (ageYears != null && ageYears >= 0) {
+    const years = Number(ageYears) === 1 ? "1 year old" : `${ageYears} years old`;
+    return `Built ${year} · ${years}`;
+  }
+  return `Built ${year}`;
+}
+
 export const COPY = {
   rankNote:
-    "A ranking from the worst inspector rating and daily traffic. Not an official grade.",
+    "A ranking from official condition ratings and other reported factors. Not an official grade.",
   ratingNote: "Inspector ratings, 0 to 9. Higher is better.",
   zoomHint: "No structures in this view.",
   emptyFilter: "No structures in view for the selected conditions.",
@@ -129,7 +155,22 @@ export const COPY = {
   poorDefinition: "Poor means a major component scored 4 or below.",
   tagline: "The National Bridge Inventory, starting with the one under you.",
   scoreMeta: "/ 100 · higher is better",
-  scoreHeading: "Score",
+  scoreHeading: "Bridge Score",
+  scoreShort: "Score",
+  scoreHigher: "Higher is better",
+  scoreExplainer:
+    "Calculated by this site from NBI condition ratings, restrictions, vulnerability flags, inspection timing, and traffic. Not an official safety grade.",
+  scoreNote:
+    "A site-generated score based on public NBI condition ratings and other reported factors. Lower scores mean the bridge stands out more in the inventory. This is not an official safety grade.",
+  meaning: "What this means",
+  standout: "Why it stands out",
+  whyScore: "Why this score",
+  facts: "Bridge facts",
+  source: "Source",
+  methodology: "Methodology",
+  methodologyBody:
+    "FHWA supplies the official inspection ratings and Good/Fair/Poor condition. This site calculates the 0–100 Bridge Score to make bridges easier to compare. The score is not an FHWA grade, engineering inspection, or safety determination. NBI data may lag newer state or local records.",
+  sourceLine: "FHWA National Bridge Inventory via BTS NTAD",
   nearest: "Nearest",
   lowestScores: "Lowest scores in view",
   drive: "Drive",

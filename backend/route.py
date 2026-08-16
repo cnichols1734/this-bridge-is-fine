@@ -53,13 +53,23 @@ def route_summary(rows: list) -> dict:
 def select_route_bridges(rows: list, cap: int) -> tuple[list, bool]:
     """List Poor first, then others. Never drop Poor to stay under the cap.
 
-    Others fill remaining slots by position along the drive, then unease.
+    Others fill remaining slots by position along the drive, then lowest score.
     Summary counts stay complete even when the list is truncated.
     """
     poor = [row for row in rows if getattr(row, "bridge_condition", None) == "P"]
     others = [row for row in rows if getattr(row, "bridge_condition", None) != "P"]
-    poor.sort(key=lambda row: (getattr(row, "along", 0) or 0, -(getattr(row, "unease_score", 0) or 0)))
-    others.sort(key=lambda row: (getattr(row, "along", 0) or 0, -(getattr(row, "unease_score", 0) or 0)))
+    poor.sort(
+        key=lambda row: (
+            getattr(row, "along", 0) or 0,
+            int(getattr(row, "unease_score", 100) if getattr(row, "unease_score", None) is not None else 100),
+        )
+    )
+    others.sort(
+        key=lambda row: (
+            getattr(row, "along", 0) or 0,
+            int(getattr(row, "unease_score", 100) if getattr(row, "unease_score", None) is not None else 100),
+        )
+    )
     if len(poor) >= cap:
         return poor, len(others) > 0
     remaining = cap - len(poor)
@@ -67,17 +77,18 @@ def select_route_bridges(rows: list, cap: int) -> tuple[list, bool]:
 
 
 def pick_worst_on_drive(rows: list, n: int = 3) -> list:
-    """Official Poor first, then lowest public score (highest unease), then lowest rating."""
+    """Official Poor first, then lowest public score (higher is better), then lowest rating."""
 
     def sort_key(row):
         poor = 0 if getattr(row, "bridge_condition", None) == "P" else 1
-        unease = int(getattr(row, "unease_score", 0) or 0)
+        raw_score = getattr(row, "unease_score", None)
+        score = int(raw_score) if raw_score is not None else 100
         raw = getattr(row, "lowest_rating", None)
         try:
             lowest = int(raw)
         except (TypeError, ValueError):
             lowest = 99
-        return (poor, -unease, lowest)
+        return (poor, score, lowest)
 
     return sorted(rows, key=sort_key)[:n]
 

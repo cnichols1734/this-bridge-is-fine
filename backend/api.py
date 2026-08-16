@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from backend.config import Config
 from backend.db import get_session, init_db
 from backend.ingest import NBI_STATE_CODES
-from backend.lookups import CONDITION_WORDS, band_label, condition_word
+from backend.explain import METHODOLOGY, rating_plain
+from backend.lookups import CONDITION_WORDS, band_label, condition_word, scour_label
 from backend.models import Bridge, IngestRun, IngestStateProgress
 from backend.route import (
     ROUTE_BRIDGES_SQL,
@@ -24,7 +25,7 @@ from backend.route import (
     route_summary,
     select_route_bridges,
 )
-from backend.scoring import publicize_text
+from backend.scoring import derive, publicize_text, record_from_bridge, score_band
 
 def _static_dir() -> Path:
     packaged = Path(__file__).resolve().parent / "static"
@@ -60,9 +61,17 @@ def _bridge_id(bridge: Bridge) -> str:
     return f"{bridge.state_code}-{bridge.structure_number}"
 
 
-def _public_score(unease: int | None) -> int:
-    """Public score runs the same way as inspector ratings: higher is better."""
-    return 100 - int(unease or 0)
+def _public_score(stored: int | None) -> int:
+    """Public Bridge Score. Stored unease_score is already higher-is-better."""
+    return int(stored or 0)
+
+
+def _iso_date(value):
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 def _list_item(
@@ -80,6 +89,7 @@ def _list_item(
         "condition_label": band_label(bridge.bridge_condition),
         "lowest": bridge.lowest_rating,
         "score": _public_score(bridge.unease_score),
+        "score_band": score_band(_public_score(bridge.unease_score)),
         "status": bridge.status_code,
         "status_label": bridge.status_label,
         "headline": publicize_text(bridge.headline),
@@ -97,8 +107,19 @@ def _list_item(
     return item
 
 
+def _rating_payload(code) -> dict:
+    value = _rating_or_none(code)
+    return {
+        "code": code,
+        "value": value,
+        "word": condition_word(code),
+        "plain": rating_plain(value) if value is not None else None,
+    }
+
+
 def _detail(bridge: Bridge) -> dict:
     item = _list_item(bridge)
+    explained = derive(record_from_bridge(bridge))
     item.update(
         {
             "location": bridge.location_text,
@@ -107,39 +128,38 @@ def _detail(bridge: Bridge) -> dict:
             "substructure": bridge.substructure,
             "culvert": bridge.culvert,
             "ratings": {
-                "deck": {
-                    "code": bridge.deck,
-                    "value": _rating_or_none(bridge.deck),
-                    "word": condition_word(bridge.deck),
-                },
-                "superstructure": {
-                    "code": bridge.superstructure,
-                    "value": _rating_or_none(bridge.superstructure),
-                    "word": condition_word(bridge.superstructure),
-                },
-                "substructure": {
-                    "code": bridge.substructure,
-                    "value": _rating_or_none(bridge.substructure),
-                    "word": condition_word(bridge.substructure),
-                },
-                "culvert": {
-                    "code": bridge.culvert,
-                    "value": _rating_or_none(bridge.culvert),
-                    "word": condition_word(bridge.culvert),
-                },
+                "deck": _rating_payload(bridge.deck),
+                "superstructure": _rating_payload(bridge.superstructure),
+                "substructure": _rating_payload(bridge.substructure),
+                "culvert": _rating_payload(bridge.culvert),
             },
             "worst_component": bridge.worst_component,
             "structure_type": bridge.structure_type,
             "year_reconstructed": bridge.year_reconstructed,
-            "age_years": bridge.age_years,
-            "inspect_date": bridge.inspect_date.isoformat() if bridge.inspect_date else None,
-            "inspect_freq_months": bridge.inspect_freq_months,
-            "inspect_overdue": bridge.inspect_overdue,
+            "age_years": explained.get("age_years") if explained.get("age_years") is not None else bridge.age_years,
+            "inspect_date": _iso_date(explained.get("inspect_date") or bridge.inspect_date),
+            "inspect_freq_months": explained.get("inspect_freq_months")
+            if explained.get("inspect_freq_months") is not None
+            else bridge.inspect_freq_months,
+            "inspect_due_on": _iso_date(explained.get("inspect_due_on")),
+            "inspect_months_past_due": explained.get("inspect_months_past_due"),
+            "inspect_overdue": bool(explained.get("inspect_overdue")),
             "fracture_critical": bridge.fracture_critical,
-            "scour_critical": bridge.scour_critical,
+            "scour": explained.get("scour") or bridge.scour,
+            "scour_label": scour_label(explained.get("scour") or bridge.scour),
+            "scour_critical": bool(explained.get("scour_critical")),
             "is_culvert": bridge.is_culvert,
-            "nbi_year": "2025",
+            "nbi_year": bridge.nbi_year,
             "scale": CONDITION_WORDS,
+            "score": explained["score"],
+            "score_band": explained["score_band"],
+            "score_breakdown": explained.get("score_breakdown"),
+            "summary": explained.get("summary"),
+            "summary_paragraphs": explained.get("summary_paragraphs") or [],
+            "explanations": explained.get("explanations") or [],
+            "methodology": explained.get("methodology") or METHODOLOGY,
+            "headline": publicize_text(explained.get("headline") or bridge.headline),
+            "why": publicize_text(explained.get("why") or bridge.why),
         }
     )
     return item
@@ -223,7 +243,7 @@ def _fetch_map_bridges(
         query = query.filter(Bridge.bridge_condition == condition)
     if exclude_condition is not None:
         query = query.filter(Bridge.bridge_condition != exclude_condition)
-    return query.order_by(Bridge.unease_score.desc()).limit(limit).all()
+    return query.order_by(Bridge.unease_score.asc()).limit(limit).all()
 
 
 def _query_viewport_bridges(db: Session, bbox, zoom: float, cap: int):
@@ -612,7 +632,7 @@ def create_app() -> Flask:
             if bbox:
                 rows = (
                     _bbox_filter(db.query(Bridge), bbox)
-                    .order_by(Bridge.unease_score.desc(), Bridge.adt.desc())
+                    .order_by(Bridge.unease_score.asc(), Bridge.adt.desc())
                     .limit(limit)
                     .all()
                 )
@@ -635,7 +655,7 @@ def create_app() -> Flask:
                           ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                           :meters
                         )
-                        ORDER BY unease_score DESC, adt DESC NULLS LAST
+                        ORDER BY unease_score ASC, adt DESC NULLS LAST
                         LIMIT :limit
                         """
                     ),
