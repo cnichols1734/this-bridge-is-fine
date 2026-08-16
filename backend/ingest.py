@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import re
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -12,8 +14,11 @@ from sqlalchemy import text
 
 from backend.config import Config
 from backend.db import get_session, init_db
-from backend.models import IngestRun
+from backend.models import IngestRun, IngestStateProgress
 from backend.scoring import derive
+
+INGEST_LOCK_KEY = 62419301
+STATE_QUERY_RE = re.compile(r"STATE_CODE_001='(\d{2})'")
 
 PAGE_SIZE = 2000
 SLEEP_SECONDS = 0.12
@@ -200,7 +205,9 @@ def valid_point(lat, lng) -> bool:
         return False
     if lat_f == 0 and lng_f == 0:
         return False
-    if not (14.0 <= lat_f <= 72.0):
+    # CONUS + AK + HI + PR + VI, and room for GU (~13.4N) / AS (~14.3S)
+    # if a later NTAD snapshot includes them. Current 2025-06-20 layer has 0.
+    if not (-15.0 <= lat_f <= 72.0):
         return False
     if not (-180.0 <= lng_f <= -60.0 or 140.0 <= lng_f <= 180.0):
         return False
@@ -405,6 +412,10 @@ def fetch_page_resilient(
     return last_payload
 
 
+class IngestInterrupted(Exception):
+    """SIGTERM / SIGINT. Persist the checkpoint and leave the run resumable."""
+
+
 def build_queries(state: str | None = None, poor_only: bool = False) -> list[str]:
     clauses = []
     if state:
@@ -420,8 +431,13 @@ def build_queries(state: str | None = None, poor_only: bool = False) -> list[str
     return queries
 
 
+def state_code_from_query(query: str) -> str | None:
+    match = STATE_QUERY_RE.fullmatch(query.strip())
+    return match.group(1) if match else None
+
+
 def remaining_queries(queries: list[str], checkpoint: str | None) -> list[str]:
-    """Skip queries already finished in an interrupted run."""
+    """Skip queries already finished. `checkpoint` is the last completed query."""
     if not checkpoint:
         return list(queries)
     try:
@@ -431,25 +447,128 @@ def remaining_queries(queries: list[str], checkpoint: str | None) -> list[str]:
     return queries[index + 1 :]
 
 
+def work_items(
+    queries: list[str],
+    checkpoint: str | None,
+    checkpoint_offset: int = 0,
+) -> list[tuple[str, int]]:
+    """(query, start_offset) pairs still needed after an interrupt."""
+    left = remaining_queries(queries, checkpoint)
+    if not left:
+        return []
+    start = max(int(checkpoint_offset or 0), 0)
+    return [(left[0], start)] + [(query, 0) for query in left[1:]]
+
+
+def acquire_ingest_lock(db) -> bool:
+    try:
+        return bool(
+            db.execute(
+                text("SELECT pg_try_advisory_lock(:k)"), {"k": INGEST_LOCK_KEY}
+            ).scalar()
+        )
+    except Exception:
+        db.rollback()
+        return True
+
+
+def release_ingest_lock(db) -> None:
+    try:
+        db.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": INGEST_LOCK_KEY})
+    except Exception:
+        db.rollback()
+
+
+def _raise_interrupt(signum, _frame) -> None:
+    raise IngestInterrupted(f"signal {signum}")
+
+
+def _progress_for(db, run_id: int, query: str) -> IngestStateProgress:
+    row = (
+        db.query(IngestStateProgress)
+        .filter(
+            IngestStateProgress.run_id == run_id,
+            IngestStateProgress.query_key == query,
+        )
+        .one_or_none()
+    )
+    if row is not None:
+        return row
+    row = IngestStateProgress(
+        run_id=run_id,
+        query_key=query,
+        state_code=state_code_from_query(query),
+        status="running",
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _touch_run(
+    db,
+    run: IngestRun,
+    *,
+    upserted: int,
+    skipped: int,
+    pages: int,
+    checkpoint: str | None,
+    checkpoint_offset: int,
+    status: str | None = None,
+    error: str | None = None,
+    finished: bool = False,
+) -> None:
+    run.rows_upserted = upserted
+    run.rows_skipped = skipped
+    run.pages = pages
+    run.checkpoint = checkpoint
+    run.checkpoint_offset = checkpoint_offset
+    if status is not None:
+        run.status = status
+    if error is not None:
+        run.error = error
+    if finished:
+        run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+
+
 def run_ingest(
     max_pages: int | None = None,
     state: str | None = None,
     poor_only: bool = False,
-    resume: bool = False,
+    resume: bool = True,
+    fresh: bool = False,
 ) -> IngestRun:
     print("connecting to database…", flush=True)
     init_db()
     print("schema ready", flush=True)
     db = get_session()
+    locked = acquire_ingest_lock(db)
+    if not locked:
+        print("another ingest holds the lock; exiting", flush=True)
+        other = (
+            db.query(IngestRun)
+            .filter(IngestRun.status.in_(("running", "error")))
+            .order_by(IngestRun.started_at.desc())
+            .first()
+        )
+        db.close()
+        if other is not None:
+            return other
+        skipped_run = IngestRun(status="locked", source_date="2025-06-20")
+        return skipped_run
+
     queries = build_queries(state, poor_only)
     run = None
     pages = 0
     upserted = 0
     skipped = 0
-    if resume:
+    finished_checkpoint = None
+    resume_offset = 0
+    if resume and not fresh:
         run = (
             db.query(IngestRun)
-            .filter(IngestRun.status == "running")
+            .filter(IngestRun.status.in_(("running", "error")))
             .order_by(IngestRun.started_at.desc())
             .first()
         )
@@ -457,10 +576,15 @@ def run_ingest(
             pages = run.pages or 0
             upserted = run.rows_upserted or 0
             skipped = run.rows_skipped or 0
-            queries = remaining_queries(queries, run.checkpoint)
+            finished_checkpoint = run.checkpoint
+            resume_offset = run.checkpoint_offset or 0
+            run.status = "running"
+            run.error = None
+            run.finished_at = None
+            db.commit()
             print(
-                f"resuming run {run.id} after {run.checkpoint!r} "
-                f"({len(queries)} queries left)",
+                f"resuming run {run.id} after {finished_checkpoint!r} "
+                f"offset {resume_offset}",
                 flush=True,
             )
     if run is None:
@@ -469,18 +593,55 @@ def run_ingest(
         db.commit()
         db.refresh(run)
 
+    work = work_items(queries, finished_checkpoint, resume_offset)
     http = requests.Session()
     http.headers["User-Agent"] = "ThisBridgeIsFine/1.0 (civic inventory; local ingest)"
+    previous_term = signal.getsignal(signal.SIGTERM)
+    previous_int = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGTERM, _raise_interrupt)
+    signal.signal(signal.SIGINT, _raise_interrupt)
+    hit_page_cap = False
+    snapshot = {
+        "status": run.status,
+        "rows_upserted": upserted,
+        "rows_skipped": skipped,
+        "pages": pages,
+        "checkpoint": finished_checkpoint,
+        "checkpoint_offset": resume_offset,
+    }
 
     try:
-        for query in queries:
+        for query, start_offset in work:
             expected = fetch_count(http, query)
-            print(f"query {query} expected {expected}", flush=True)
-            offset = 0
+            progress = _progress_for(db, run.id, query)
+            progress.status = "running"
+            progress.expected_count = expected
+            progress.page_offset = start_offset
+            progress.error = None
+            db.commit()
+            print(
+                f"query {query} expected {expected} resume_offset {start_offset}",
+                flush=True,
+            )
+            offset = start_offset
+            if expected == 0:
+                progress.status = "ok"
+                progress.page_offset = 0
+                finished_checkpoint = query
+                resume_offset = 0
+                _touch_run(
+                    db,
+                    run,
+                    upserted=upserted,
+                    skipped=skipped,
+                    pages=pages,
+                    checkpoint=finished_checkpoint,
+                    checkpoint_offset=0,
+                )
+                continue
             while True:
                 if max_pages is not None and pages >= max_pages:
-                    break
-                if expected == 0:
+                    hit_page_cap = True
                     break
                 print(f"fetching {query} offset {offset}", flush=True)
                 payload = fetch_page_resilient(http, offset, query, expected)
@@ -488,18 +649,35 @@ def run_ingest(
                 if not features:
                     break
                 rows = []
+                page_skipped = 0
                 for feature in features:
                     mapped = map_feature(feature.get("attributes") or {})
                     if mapped is None:
-                        skipped += 1
+                        page_skipped += 1
                         continue
                     rows.append(mapped)
                 if rows:
                     db.execute(UPSERT_SQL, rows)
-                    db.commit()
-                    upserted += len(rows)
+                skipped += page_skipped
+                upserted += len(rows)
                 pages += 1
                 offset += len(features)
+                progress.page_offset = offset
+                progress.rows_upserted = (progress.rows_upserted or 0) + len(rows)
+                progress.rows_skipped = (progress.rows_skipped or 0) + page_skipped
+                progress.pages = (progress.pages or 0) + 1
+                resume_offset = offset
+                # Mid-state: checkpoint stays the last *finished* query;
+                # checkpoint_offset is the next fetch in this one.
+                _touch_run(
+                    db,
+                    run,
+                    upserted=upserted,
+                    skipped=skipped,
+                    pages=pages,
+                    checkpoint=finished_checkpoint,
+                    checkpoint_offset=offset,
+                )
                 print(
                     f"page {pages} offset {offset}/{expected} upserted {upserted} skipped {skipped}",
                     flush=True,
@@ -512,50 +690,129 @@ def run_ingest(
                 ):
                     break
                 time.sleep(SLEEP_SECONDS)
-            run.checkpoint = query
-            run.rows_upserted = upserted
-            run.rows_skipped = skipped
-            run.pages = pages
-            db.commit()
-            if max_pages is not None and pages >= max_pages:
+            if hit_page_cap:
                 break
+            progress.status = "ok"
+            progress.page_offset = offset
+            finished_checkpoint = query
+            resume_offset = 0
+            _touch_run(
+                db,
+                run,
+                upserted=upserted,
+                skipped=skipped,
+                pages=pages,
+                checkpoint=finished_checkpoint,
+                checkpoint_offset=0,
+            )
 
-        run.status = "ok"
-        run.finished_at = datetime.now(timezone.utc)
-        run.rows_upserted = upserted
-        run.rows_skipped = skipped
-        run.pages = pages
-        db.commit()
-        db.refresh(run)
+        if hit_page_cap:
+            snapshot = {
+                "status": "running",
+                "rows_upserted": upserted,
+                "rows_skipped": skipped,
+                "pages": pages,
+                "checkpoint": finished_checkpoint,
+                "checkpoint_offset": resume_offset,
+            }
+        else:
+            _touch_run(
+                db,
+                run,
+                upserted=upserted,
+                skipped=skipped,
+                pages=pages,
+                checkpoint=finished_checkpoint,
+                checkpoint_offset=0,
+                status="ok",
+                finished=True,
+            )
+            db.refresh(run)
+            snapshot = {
+                "status": run.status,
+                "rows_upserted": run.rows_upserted,
+                "rows_skipped": run.rows_skipped,
+                "pages": run.pages,
+                "checkpoint": run.checkpoint,
+                "checkpoint_offset": run.checkpoint_offset or 0,
+            }
+    except IngestInterrupted as exc:
+        db.rollback()
+        run = db.get(IngestRun, run.id) or run
+        _touch_run(
+            db,
+            run,
+            upserted=upserted,
+            skipped=skipped,
+            pages=pages,
+            checkpoint=finished_checkpoint,
+            checkpoint_offset=resume_offset,
+            status="running",
+            error=str(exc),
+        )
+        print(
+            f"checkpointed run {run.id} after {finished_checkpoint!r} "
+            f"offset {resume_offset}",
+            flush=True,
+        )
         snapshot = {
-            "status": run.status,
-            "rows_upserted": run.rows_upserted,
-            "rows_skipped": run.rows_skipped,
-            "pages": run.pages,
+            "status": "running",
+            "rows_upserted": upserted,
+            "rows_skipped": skipped,
+            "pages": pages,
+            "checkpoint": finished_checkpoint,
+            "checkpoint_offset": resume_offset,
         }
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(IngestRun, run.id) or run
-        run.status = "error"
-        run.error = str(exc)
-        run.finished_at = datetime.now(timezone.utc)
-        run.rows_upserted = upserted
-        run.rows_skipped = skipped
-        run.pages = pages
-        db.commit()
+        progress_row = (
+            db.query(IngestStateProgress)
+            .filter(
+                IngestStateProgress.run_id == run.id,
+                IngestStateProgress.status == "running",
+            )
+            .order_by(IngestStateProgress.id.desc())
+            .first()
+        )
+        if progress_row is not None:
+            progress_row.status = "error"
+            progress_row.error = str(exc)
+        _touch_run(
+            db,
+            run,
+            upserted=upserted,
+            skipped=skipped,
+            pages=pages,
+            checkpoint=finished_checkpoint,
+            checkpoint_offset=resume_offset,
+            status="error",
+            error=str(exc),
+            finished=True,
+        )
         snapshot = {
-            "status": run.status,
+            "status": "error",
             "rows_upserted": upserted,
             "rows_skipped": skipped,
             "pages": pages,
+            "checkpoint": finished_checkpoint,
+            "checkpoint_offset": resume_offset,
         }
+        signal.signal(signal.SIGTERM, previous_term)
+        signal.signal(signal.SIGINT, previous_int)
+        release_ingest_lock(db)
         db.close()
         raise
+    signal.signal(signal.SIGTERM, previous_term)
+    signal.signal(signal.SIGINT, previous_int)
+    release_ingest_lock(db)
     db.close()
     run.status = snapshot["status"]
     run.rows_upserted = snapshot["rows_upserted"]
     run.rows_skipped = snapshot["rows_skipped"]
     run.pages = snapshot["pages"]
+    run.checkpoint = snapshot["checkpoint"]
+    run.checkpoint_offset = snapshot["checkpoint_offset"]
     return run
 
 
@@ -567,20 +824,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Continue an interrupted national load from the last finished state",
+        default=True,
+        help="Continue an interrupted load (default)",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Ignore an unfinished run and start a new national load",
     )
     args = parser.parse_args(argv)
     run = run_ingest(
         max_pages=args.max_pages,
         state=args.state,
         poor_only=args.poor_only,
-        resume=args.resume,
+        resume=not args.fresh,
+        fresh=args.fresh,
     )
     print(
         f"done status={run.status} upserted={run.rows_upserted} "
         f"skipped={run.rows_skipped} pages={run.pages}"
     )
-    return 0 if run.status == "ok" else 1
+    if run.status in {"ok", "locked"}:
+        return 0
+    return 1
 
 
 if __name__ == "__main__":

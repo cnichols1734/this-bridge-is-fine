@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from backend.config import Config
 from backend.db import get_session, init_db
+from backend.ingest import NBI_STATE_CODES
 from backend.lookups import CONDITION_WORDS, band_label, condition_word
-from backend.models import Bridge, IngestRun
+from backend.models import Bridge, IngestRun, IngestStateProgress
 from backend.scoring import publicize_text
 
 def _static_dir() -> Path:
@@ -144,6 +145,33 @@ def _latest_ingest(db: Session) -> IngestRun | None:
     )
 
 
+def _active_ingest(db: Session) -> IngestRun | None:
+    return (
+        db.query(IngestRun)
+        .filter(IngestRun.status.in_(("running", "error")))
+        .order_by(IngestRun.started_at.desc())
+        .first()
+    )
+
+
+def _run_payload(run: IngestRun | None) -> dict | None:
+    if run is None:
+        return None
+    return {
+        "id": run.id,
+        "status": run.status,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "rows_upserted": run.rows_upserted,
+        "rows_skipped": run.rows_skipped,
+        "pages": run.pages,
+        "source_date": run.source_date,
+        "checkpoint": run.checkpoint,
+        "checkpoint_offset": run.checkpoint_offset or 0,
+        "error": run.error,
+    }
+
+
 def _bbox_filter(query, bbox):
     west, south, east, north = bbox
     return query.filter(
@@ -172,12 +200,14 @@ def create_app() -> Flask:
         try:
             db.execute(text("SELECT 1"))
             ingest = _latest_ingest(db)
+            active = _active_ingest(db)
             return jsonify(
                 {
                     "ok": True,
                     "database": "up",
                     "last_ingest": ingest.finished_at.isoformat() if ingest and ingest.finished_at else None,
                     "ingest_status": ingest.status if ingest else "empty",
+                    "active_ingest": active.status if active else None,
                 }
             )
         except Exception as exc:  # noqa: BLE001
@@ -266,6 +296,18 @@ def create_app() -> Flask:
                 .scalar()
                 or 0
             )
+            unknown = (
+                db.query(func.count(Bridge.id))
+                .filter(
+                    (Bridge.bridge_condition.is_(None))
+                    | (Bridge.bridge_condition == "")
+                )
+                .scalar()
+                or 0
+            )
+            states_present = (
+                db.query(func.count(func.distinct(Bridge.state_code))).scalar() or 0
+            )
             ingest = _latest_ingest(db)
             return jsonify(
                 {
@@ -273,10 +315,67 @@ def create_app() -> Flask:
                     "good": good,
                     "fair": fair,
                     "poor": poor,
+                    "unknown_condition": unknown,
+                    "states_present": states_present,
+                    "states_expected": len(NBI_STATE_CODES),
                     "snapshot": ingest.source_date if ingest else None,
                     "ingested_at": ingest.finished_at.isoformat()
                     if ingest and ingest.finished_at
                     else None,
+                }
+            )
+        finally:
+            db.close()
+
+    @app.get("/api/ingest")
+    def ingest_status():
+        """National coverage and resume checkpoints. Data plane, not UI."""
+        db = _session()
+        try:
+            total = db.query(func.count(Bridge.id)).scalar() or 0
+            states = (
+                db.query(Bridge.state_code, func.count(Bridge.id))
+                .group_by(Bridge.state_code)
+                .order_by(Bridge.state_code)
+                .all()
+            )
+            present = {code for code, _count in states}
+            missing = [code for code in NBI_STATE_CODES if code not in present]
+            last_ok = _latest_ingest(db)
+            active = _active_ingest(db)
+            progress_rows = []
+            if active is not None:
+                progress_rows = (
+                    db.query(IngestStateProgress)
+                    .filter(IngestStateProgress.run_id == active.id)
+                    .order_by(IngestStateProgress.id)
+                    .all()
+                )
+            return jsonify(
+                {
+                    "total": total,
+                    "states_present": len(states),
+                    "states_expected": len(NBI_STATE_CODES),
+                    "missing_states": missing,
+                    "states": [
+                        {"state": code, "count": int(count)} for code, count in states
+                    ],
+                    "last_ok_run": _run_payload(last_ok),
+                    "active_run": _run_payload(active),
+                    "progress": [
+                        {
+                            "state": row.state_code,
+                            "query": row.query_key,
+                            "status": row.status,
+                            "expected": row.expected_count,
+                            "offset": row.page_offset,
+                            "upserted": row.rows_upserted,
+                            "skipped": row.rows_skipped,
+                            "pages": row.pages,
+                            "error": row.error,
+                        }
+                        for row in progress_rows
+                    ],
                 }
             )
         finally:

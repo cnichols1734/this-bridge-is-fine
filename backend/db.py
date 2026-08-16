@@ -25,6 +25,19 @@ def ensure_extensions(connection) -> None:
     connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
 
 
+def ensure_ingest_columns(connection) -> None:
+    """Additive. create_all will not add columns to an existing ingest_runs table."""
+    connection.execute(
+        text("ALTER TABLE ingest_runs ADD COLUMN IF NOT EXISTS checkpoint TEXT")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE ingest_runs "
+            "ADD COLUMN IF NOT EXISTS checkpoint_offset INTEGER DEFAULT 0"
+        )
+    )
+
+
 def init_db() -> None:
     with engine.begin() as connection:
         ensure_extensions(connection)
@@ -32,6 +45,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
+        ensure_ingest_columns(connection)
         connection.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_bridges_geog "
@@ -42,11 +56,5 @@ def init_db() -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_bridges_bbox "
                 "ON bridges (lng, lat)"
-            )
-        )
-        connection.execute(
-            text(
-                "ALTER TABLE ingest_runs "
-                "ADD COLUMN IF NOT EXISTS checkpoint TEXT"
             )
         )

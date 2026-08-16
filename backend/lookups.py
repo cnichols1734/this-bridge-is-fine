@@ -160,3 +160,23 @@ def is_scour_critical(value: str | None) -> bool:
 
 def band_label(code: str | None) -> str:
     return CONDITION_BAND.get(_code(code).upper(), "Unknown")
+
+
+def official_condition_band(lowest, source: str | None = None) -> str | None:
+    """Official NBI G/F/P. Trust the source item; fill from lowest rating if missing.
+
+    FHWA: G = 7–9, F = 5–6, P = 0–4. This is not the public unease ranking.
+    """
+    raw = _code(source).upper()
+    if raw in CONDITION_BAND:
+        return raw
+    number = lowest if isinstance(lowest, int) else rating_int(lowest)
+    if number is None:
+        return None
+    if number >= 7:
+        return "G"
+    if number >= 5:
+        return "F"
+    if number >= 0:
+        return "P"
+    return None

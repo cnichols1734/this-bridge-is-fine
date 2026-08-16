@@ -1,5 +1,6 @@
 from datetime import date
 
+from backend.lookups import official_condition_band
 from backend.scoring import derive, parse_inspect_date, publicize_text, unease_score
 
 
@@ -118,6 +119,89 @@ def test_bad_urban_bridges_stay_distinguishable():
     assert serious < posted_and_scoured < closed_failure
     assert len(set(ordered)) == len(ordered)
     assert max(ordered) < 100
+
+
+def test_official_gfp_is_independent_of_unease():
+    """G/F/P is the inspector band. Unease is the public ranking. Do not fuse them."""
+    poor_quiet = derive(
+        {
+            "lowest_rating": 4,
+            "bridge_condition": "P",
+            "status_code": "A",
+            "year_built": 1980,
+            "adt": 40,
+            "design_code": "19",
+            "material_code": "1",
+            "scour": "N",
+            "fracture": "N",
+        },
+        today=date(2026, 8, 16),
+    )
+    good_busy = derive(
+        {
+            "lowest_rating": 8,
+            "bridge_condition": "G",
+            "status_code": "A",
+            "year_built": 2018,
+            "adt": 180000,
+            "design_code": "02",
+            "material_code": "5",
+            "functional_class": "11",
+            "facility_carried": "INTERSTATE 90",
+            "scour": "N",
+            "fracture": "N",
+        },
+        today=date(2026, 8, 16),
+    )
+    assert poor_quiet["bridge_condition"] == "P"
+    assert good_busy["bridge_condition"] == "G"
+    assert good_busy["unease_score"] < 25
+    # A quiet Poor culvert stays Poor even when unease is moderate.
+    assert poor_quiet["is_culvert"] is True
+    assert 0 < poor_quiet["unease_score"] < 50
+
+
+def test_official_band_fills_from_lowest_when_source_missing():
+    assert official_condition_band(8, None) == "G"
+    assert official_condition_band(6, "") == "F"
+    assert official_condition_band(4, None) == "P"
+    assert official_condition_band(0, None) == "P"
+    assert official_condition_band(None, None) is None
+    # Source wins even if it disagrees with lowest. Do not rewrite history.
+    assert official_condition_band(4, "G") == "G"
+    derived = derive({"lowest_rating": 5, "bridge_condition": None, "adt": 100})
+    assert derived["bridge_condition"] == "F"
+
+
+def test_lake_shore_drive_is_poor_but_not_clamped_to_zero():
+    """Production still has public score 0 on this row (old hard clamp). Current curve does not."""
+    derived = derive(
+        {
+            "deck": "6",
+            "superstructure": "4",
+            "substructure": "5",
+            "culvert": "N",
+            "lowest_rating": 4,
+            "bridge_condition": "P",
+            "status_code": "P",
+            "scour": "N",
+            "fracture": "Y",
+            "year_built": 1937,
+            "adt": 102000,
+            "inspect_raw": "924",
+            "inspect_freq_months": 24,
+            "functional_class": "14",
+            "facility_carried": "LAKE SHORE DRIVE",
+            "material_code": "3",
+            "design_code": "16",
+        },
+        today=date(2026, 8, 16),
+    )
+    assert derived["bridge_condition"] == "P"
+    assert derived["lowest_rating"] == 4
+    assert derived["worst_component"] == "superstructure"
+    assert 60 <= derived["unease_score"] <= 90
+    assert 100 - derived["unease_score"] != 0
 
 
 def test_culvert_is_downranked():
