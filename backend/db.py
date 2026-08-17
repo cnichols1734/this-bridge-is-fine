@@ -99,6 +99,38 @@ def ensure_ingest_columns(connection) -> None:
         )
 
 
+BRIDGE_EXTRA_COLUMNS = (
+    ("owner_code", "VARCHAR(2)"),
+    ("maintenance_code", "VARCHAR(2)"),
+    ("structure_length_m", "DOUBLE PRECISION"),
+    ("max_span_m", "DOUBLE PRECISION"),
+    ("deck_width_m", "DOUBLE PRECISION"),
+    ("deck_area_m2", "DOUBLE PRECISION"),
+    ("route_prefix", "VARCHAR(2)"),
+    ("route_number", "VARCHAR(8)"),
+    ("lanes_on", "INTEGER"),
+    ("lanes_under", "INTEGER"),
+    ("toll_code", "VARCHAR(2)"),
+    ("history_code", "VARCHAR(2)"),
+    ("detour_km", "INTEGER"),
+    ("operating_rating_meth", "VARCHAR(2)"),
+    ("operating_rating", "DOUBLE PRECISION"),
+    ("inventory_rating_meth", "VARCHAR(2)"),
+    ("inventory_rating", "DOUBLE PRECISION"),
+)
+
+
+def ensure_bridge_columns(connection) -> None:
+    """Additive. create_all will not add columns to an existing bridges table."""
+    if not _has_relation(connection, "bridges"):
+        return
+    for name, ddl_type in BRIDGE_EXTRA_COLUMNS:
+        if not _has_column(connection, "bridges", name):
+            connection.execute(
+                text(f"ALTER TABLE bridges ADD COLUMN {name} {ddl_type}")
+            )
+
+
 def ensure_indexes(connection) -> None:
     existing = {
         name for name, _ddl in BRIDGE_INDEXES if _has_relation(connection, name)
@@ -118,6 +150,7 @@ def init_db() -> None:
     # CREATE INDEX ix_bridges_geog.
     with engine.begin() as connection:
         ensure_ingest_columns(connection)
+        ensure_bridge_columns(connection)
     with engine.begin() as connection:
         ensure_indexes(connection)
 

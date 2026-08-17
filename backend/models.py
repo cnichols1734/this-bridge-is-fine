@@ -75,9 +75,47 @@ class Bridge(Base):
     fracture_critical: Mapped[bool] = mapped_column(Boolean, default=False)
     scour_critical: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    owner_code: Mapped[str | None] = mapped_column(String(2))
+    maintenance_code: Mapped[str | None] = mapped_column(String(2))
+    structure_length_m: Mapped[float | None] = mapped_column(Float)
+    max_span_m: Mapped[float | None] = mapped_column(Float)
+    deck_width_m: Mapped[float | None] = mapped_column(Float)
+    deck_area_m2: Mapped[float | None] = mapped_column(Float)
+    route_prefix: Mapped[str | None] = mapped_column(String(2))
+    route_number: Mapped[str | None] = mapped_column(String(8))
+    lanes_on: Mapped[int | None] = mapped_column(Integer)
+    lanes_under: Mapped[int | None] = mapped_column(Integer)
+    toll_code: Mapped[str | None] = mapped_column(String(2))
+    history_code: Mapped[str | None] = mapped_column(String(2))
+    detour_km: Mapped[int | None] = mapped_column(Integer)
+    operating_rating_meth: Mapped[str | None] = mapped_column(String(2))
+    operating_rating: Mapped[float | None] = mapped_column(Float)
+    inventory_rating_meth: Mapped[str | None] = mapped_column(String(2))
+    inventory_rating: Mapped[float | None] = mapped_column(Float)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class BridgeHistory(Base):
+    __tablename__ = "bridge_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "state_code", "structure_number", "nbi_year", name="uq_bridge_history"
+        ),
+        Index("ix_bridge_history_identity", "state_code", "structure_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    structure_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    nbi_year: Mapped[str] = mapped_column(String(4), nullable=False)
+    lowest_rating: Mapped[int | None] = mapped_column(Integer)
+    deck: Mapped[str | None] = mapped_column(String(2))
+    superstructure: Mapped[str | None] = mapped_column(String(2))
+    substructure: Mapped[str | None] = mapped_column(String(2))
+    culvert: Mapped[str | None] = mapped_column(String(2))
 
 
 class IngestRun(Base):

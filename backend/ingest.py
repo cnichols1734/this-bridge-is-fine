@@ -14,6 +14,8 @@ from sqlalchemy import text
 
 from backend.config import Config
 from backend.db import get_session, init_db
+from backend.history import HISTORY_UPSERT_SQL, history_row_from_mapped
+from backend.lookups import parse_load_rating, parse_optional_float, parse_optional_int
 from backend.models import IngestRun, IngestStateProgress
 from backend.scoring import derive
 
@@ -112,6 +114,23 @@ OUT_FIELDS = [
     "FUNCTIONAL_CLASS_026",
     "STRUCTURE_KIND_043A",
     "STRUCTURE_TYPE_043B",
+    "OWNER_022",
+    "MAINTENANCE_021",
+    "STRUCTURE_LEN_MT_049",
+    "MAX_SPAN_LEN_MT_048",
+    "DECK_WIDTH_MT_052",
+    "DECK_AREA",
+    "ROUTE_PREFIX_005B",
+    "ROUTE_NUMBER_005D",
+    "TRAFFIC_LANES_ON_028A",
+    "TRAFFIC_LANES_UND_028B",
+    "TOLL_020",
+    "HISTORY_037",
+    "DETOUR_KILOS_019",
+    "OPR_RATING_METH_063",
+    "OPERATING_RATING_064",
+    "INV_RATING_METH_065",
+    "INVENTORY_RATING_066",
 ]
 
 UPSERT_SQL = text(
@@ -128,7 +147,14 @@ UPSERT_SQL = text(
         functional_class, material_code, design_code, structure_type,
         age_years, inspect_overdue, adt_suspect, adt_capped, is_culvert,
         unease_score, headline, why, worst_component,
-        fracture_critical, scour_critical, updated_at
+        fracture_critical, scour_critical,
+        owner_code, maintenance_code,
+        structure_length_m, max_span_m, deck_width_m, deck_area_m2,
+        route_prefix, route_number, lanes_on, lanes_under,
+        toll_code, history_code, detour_km,
+        operating_rating_meth, operating_rating,
+        inventory_rating_meth, inventory_rating,
+        updated_at
     ) VALUES (
         :state_code, :structure_number, :nbi_year,
         :lat, :lng, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
@@ -141,7 +167,14 @@ UPSERT_SQL = text(
         :functional_class, :material_code, :design_code, :structure_type,
         :age_years, :inspect_overdue, :adt_suspect, :adt_capped, :is_culvert,
         :unease_score, :headline, :why, :worst_component,
-        :fracture_critical, :scour_critical, NOW()
+        :fracture_critical, :scour_critical,
+        :owner_code, :maintenance_code,
+        :structure_length_m, :max_span_m, :deck_width_m, :deck_area_m2,
+        :route_prefix, :route_number, :lanes_on, :lanes_under,
+        :toll_code, :history_code, :detour_km,
+        :operating_rating_meth, :operating_rating,
+        :inventory_rating_meth, :inventory_rating,
+        NOW()
     )
     ON CONFLICT (state_code, structure_number) DO UPDATE SET
         nbi_year = EXCLUDED.nbi_year,
@@ -183,6 +216,23 @@ UPSERT_SQL = text(
         worst_component = EXCLUDED.worst_component,
         fracture_critical = EXCLUDED.fracture_critical,
         scour_critical = EXCLUDED.scour_critical,
+        owner_code = EXCLUDED.owner_code,
+        maintenance_code = EXCLUDED.maintenance_code,
+        structure_length_m = EXCLUDED.structure_length_m,
+        max_span_m = EXCLUDED.max_span_m,
+        deck_width_m = EXCLUDED.deck_width_m,
+        deck_area_m2 = EXCLUDED.deck_area_m2,
+        route_prefix = EXCLUDED.route_prefix,
+        route_number = EXCLUDED.route_number,
+        lanes_on = EXCLUDED.lanes_on,
+        lanes_under = EXCLUDED.lanes_under,
+        toll_code = EXCLUDED.toll_code,
+        history_code = EXCLUDED.history_code,
+        detour_km = EXCLUDED.detour_km,
+        operating_rating_meth = EXCLUDED.operating_rating_meth,
+        operating_rating = EXCLUDED.operating_rating,
+        inventory_rating_meth = EXCLUDED.inventory_rating_meth,
+        inventory_rating = EXCLUDED.inventory_rating,
         updated_at = NOW()
     """
 )
@@ -278,6 +328,23 @@ def map_feature(attrs: dict) -> dict | None:
         "functional_class": _clean(attrs.get("FUNCTIONAL_CLASS_026")),
         "material_code": _clean(attrs.get("STRUCTURE_KIND_043A")),
         "design_code": _clean(attrs.get("STRUCTURE_TYPE_043B")),
+        "owner_code": _clean(attrs.get("OWNER_022")),
+        "maintenance_code": _clean(attrs.get("MAINTENANCE_021")),
+        "structure_length_m": parse_optional_float(attrs.get("STRUCTURE_LEN_MT_049")),
+        "max_span_m": parse_optional_float(attrs.get("MAX_SPAN_LEN_MT_048")),
+        "deck_width_m": parse_optional_float(attrs.get("DECK_WIDTH_MT_052")),
+        "deck_area_m2": parse_optional_float(attrs.get("DECK_AREA")),
+        "route_prefix": _clean(attrs.get("ROUTE_PREFIX_005B")),
+        "route_number": _clean(attrs.get("ROUTE_NUMBER_005D")),
+        "lanes_on": parse_optional_int(attrs.get("TRAFFIC_LANES_ON_028A")),
+        "lanes_under": parse_optional_int(attrs.get("TRAFFIC_LANES_UND_028B")),
+        "toll_code": _clean(attrs.get("TOLL_020")),
+        "history_code": _clean(attrs.get("HISTORY_037")),
+        "detour_km": parse_optional_int(attrs.get("DETOUR_KILOS_019")),
+        "operating_rating_meth": _clean(attrs.get("OPR_RATING_METH_063")),
+        "operating_rating": parse_load_rating(attrs.get("OPERATING_RATING_064")),
+        "inventory_rating_meth": _clean(attrs.get("INV_RATING_METH_065")),
+        "inventory_rating": parse_load_rating(attrs.get("INVENTORY_RATING_066")),
     }
     derived = derive(raw)
     raw.update(
@@ -658,6 +725,13 @@ def run_ingest(
                     rows.append(mapped)
                 if rows:
                     db.execute(UPSERT_SQL, rows)
+                    history_rows = [
+                        row
+                        for row in (history_row_from_mapped(item) for item in rows)
+                        if row
+                    ]
+                    if history_rows:
+                        db.execute(HISTORY_UPSERT_SQL, history_rows)
                 skipped += page_skipped
                 upserted += len(rows)
                 pages += 1

@@ -139,6 +139,23 @@ def test_map_feature_is_idempotent():
         "FUNCTIONAL_CLASS_026": "14",
         "STRUCTURE_KIND_043A": "3",
         "STRUCTURE_TYPE_043B": "16",
+        "OWNER_022": "32",
+        "MAINTENANCE_021": "32",
+        "STRUCTURE_LEN_MT_049": 3879.2,
+        "MAX_SPAN_LEN_MT_048": 5.5,
+        "DECK_WIDTH_MT_052": 0.9,
+        "DECK_AREA": 34600,
+        "ROUTE_PREFIX_005B": "4",
+        "ROUTE_NUMBER_005D": "0",
+        "TRAFFIC_LANES_ON_028A": 2,
+        "TRAFFIC_LANES_UND_028B": 0,
+        "TOLL_020": "1",
+        "HISTORY_037": "2",
+        "DETOUR_KILOS_019": 113,
+        "OPR_RATING_METH_063": "1",
+        "OPERATING_RATING_064": 3.2,
+        "INV_RATING_METH_065": "1",
+        "INVENTORY_RATING_066": 2.6,
     }
     first = map_feature(attrs)
     second = map_feature(attrs)
@@ -148,4 +165,9 @@ def test_map_feature_is_idempotent():
     assert first["bridge_condition"] == "P"
     assert first["unease_score"] == second["unease_score"]
     assert 30 <= first["unease_score"] <= 50
+    assert first["owner_code"] == "32"
+    assert first["structure_length_m"] == 3879.2
+    assert first["operating_rating"] == 3.2
+    assert first["inventory_rating"] == 2.6
     assert map_feature({**attrs, "LATDD": 0, "LONGDD": 0}) is None
+    assert map_feature({**attrs, "OPERATING_RATING_064": 99.9})["operating_rating"] is None

@@ -9,6 +9,7 @@ import {
   SCORE_BANDS,
   conditionClass,
   conditionVisible,
+  dockJob,
   driveBridgesForMap,
   driveBridgesGeojson,
   formatBuilt,
@@ -28,6 +29,7 @@ import {
   ratingIsPoor,
   ratingWord,
   scoreBand,
+  shellMode,
 } from "./format.js";
 
 const FORBIDDEN = [
@@ -342,6 +344,20 @@ test("approaching callout prefers Poor and ignores dismissed", () => {
     routeM: 2000,
   });
   assert.equal(past, null);
+});
+
+test("shell mode is one job at a time", () => {
+  assert.equal(shellMode({ detail: { id: "1" }, tripOpen: true, listMode: "nearby" }), "file");
+  assert.equal(shellMode({ detail: null, tripOpen: true, listMode: "lowest" }), "drive");
+  assert.equal(shellMode({ detail: null, tripOpen: false, listMode: "lowest" }), "lowest");
+  assert.equal(shellMode({ detail: null, tripOpen: false, listMode: "nearby" }), "nearby");
+});
+
+test("dock job keeps map one tap away", () => {
+  assert.equal(dockJob({ detail: { id: "1" }, tripOpen: false, sheet: "full" }), "file");
+  assert.equal(dockJob({ detail: null, tripOpen: true, sheet: "half" }), "drive");
+  assert.equal(dockJob({ detail: null, tripOpen: false, sheet: "half" }), "bridges");
+  assert.equal(dockJob({ detail: null, tripOpen: false, sheet: "peek" }), "map");
 });
 
 test("drive time, distance, and ETA stay precise", () => {

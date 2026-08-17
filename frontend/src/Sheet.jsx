@@ -107,7 +107,7 @@ export default function Sheet({
 
   const startDrag = (event) => {
     if (event.button && event.button !== 0) return;
-    if (event.target.closest(".sheet-close, a, input, .row, .trip-use, .trip-worst, .approach-card, .drive-btn")) return;
+    if (event.target.closest(".sheet-close, a, input, .row, .trip-use, .trip-worst, .approach-card, .drive-btn, .seg, .file-jump, .dock")) return;
     if (!event.target.closest(".sheet-handle, .sheet-drag")) return;
     onPointerDown(event);
   };

@@ -132,6 +132,19 @@ export function scoreBand(score) {
   return "Significant concerns";
 }
 
+export function shellMode({ detail, tripOpen, listMode }) {
+  if (detail) return "file";
+  if (tripOpen) return "drive";
+  return listMode === "lowest" ? "lowest" : "nearby";
+}
+
+export function dockJob({ detail, tripOpen, sheet }) {
+  if (detail) return "file";
+  if (tripOpen && sheet !== "peek") return "drive";
+  if (sheet === "half" || sheet === "full") return "bridges";
+  return "map";
+}
+
 export function formatBuilt(year, ageYears) {
   if (!year) return null;
   if (ageYears != null && ageYears >= 0) {
@@ -171,8 +184,25 @@ export const COPY = {
   methodologyBody:
     "FHWA supplies the official inspection ratings and Good/Fair/Poor condition. This site calculates the 0–100 Bridge Score to make bridges easier to compare. The score is not an FHWA grade, engineering inspection, or safety determination. NBI data may lag newer state or local records.",
   sourceLine: "FHWA National Bridge Inventory via BTS NTAD",
-  nearest: "Nearest",
+  nearest: "Nearby",
   lowestScores: "Lowest scores in view",
+  nearby: "Nearby",
+  lowest: "Lowest",
+  mapTab: "Map",
+  bridgesTab: "Bridges",
+  driveTab: "Drive",
+  overview: "Overview",
+  ratingsJump: "Ratings",
+  fileJump: "File",
+  trend: "Five-year condition",
+  loads: "Load ratings",
+  details: "Bridge details",
+  construction: "Construction",
+  dimensions: "Dimensions",
+  classification: "Classification",
+  inventoryStatus: "Status",
+  loadIntro:
+    "Load ratings report what weight this inventory assigns for permits and everyday traffic. They are not a route-clearance decision.",
   drive: "Drive",
   driveAction: "Start a drive",
   driveStart: "Start",

@@ -26,6 +26,8 @@ SCAN = [
     ROOT / "backend" / "api.py",
     ROOT / "backend" / "route.py",
     ROOT / "backend" / "explain.py",
+    ROOT / "backend" / "file_payload.py",
+    ROOT / "backend" / "history.py",
     ROOT / "backend" / "scoring.py",
 ]
 
@@ -116,7 +118,9 @@ def test_preview_list_matches_route_pins():
     app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
     assert "const routeOnMap = Boolean(tripPayload?.route)" in app
     assert "routeOnMap ? tripPayload.bridges" in app
-    assert "{routeOnMap ? COPY.driveBridges : COPY.nearest}" in app
+    assert "COPY.driveBridges" in app
+    assert "COPY.nearest" in app
+    assert 'mode === "drive"' in app
 
 
 def test_follow_camera_is_snappy():
@@ -165,19 +169,22 @@ def test_map_has_an_always_visible_locate_control():
     assert "color: #0071e3" not in css.split(".locate-btn")[1][:400]
 
 
-def test_drive_is_a_real_button():
+def test_drive_is_a_named_job():
     app = (ROOT / "frontend" / "src" / "App.jsx").read_text()
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
-    assert "DriveButton" in app
-    assert "Start a drive" in (ROOT / "frontend" / "src" / "format.js").read_text()
-    assert ".drive-btn" in css
-    assert "background: var(--ink)" in css
+    fmt = (ROOT / "frontend" / "src" / "format.js").read_text()
+    assert "goDriveTab" in app
+    assert "COPY.driveTab" in app
+    assert "Start a drive" in fmt
+    assert ".dock" in css
+    assert ".seg" in css
 
 
 def test_overlays_use_hairlines_not_drop_shadows():
     css = (ROOT / "frontend" / "src" / "index.css").read_text()
     assert ".search-hits" in css
-    assert ".map-popup" in css
+    assert ".col-rail" in css
+    assert ".map-popup" not in css
     assert "box-shadow: 0 6px 24px" not in css
     assert "box-shadow: 0 8px 24px" not in css
     assert "max-width: 360px" not in css

@@ -12,8 +12,9 @@ from backend.config import Config
 from backend.db import get_session, init_db
 from backend.ingest import NBI_STATE_CODES
 from backend.explain import METHODOLOGY, rating_plain
+from backend.file_payload import file_blocks
 from backend.lookups import CONDITION_WORDS, band_label, condition_word, scour_label
-from backend.models import Bridge, IngestRun, IngestStateProgress
+from backend.models import Bridge, BridgeHistory, IngestRun, IngestStateProgress
 from backend.route import (
     ROUTE_BRIDGES_SQL,
     RouteError,
@@ -117,7 +118,30 @@ def _rating_payload(code) -> dict:
     }
 
 
-def _detail(bridge: Bridge) -> dict:
+def _history_rows(db: Session, bridge: Bridge) -> list[dict]:
+    rows = (
+        db.query(BridgeHistory)
+        .filter(
+            BridgeHistory.state_code == bridge.state_code,
+            BridgeHistory.structure_number == bridge.structure_number,
+        )
+        .order_by(BridgeHistory.nbi_year.asc())
+        .all()
+    )
+    return [
+        {
+            "nbi_year": row.nbi_year,
+            "lowest_rating": row.lowest_rating,
+            "deck": row.deck,
+            "superstructure": row.superstructure,
+            "substructure": row.substructure,
+            "culvert": row.culvert,
+        }
+        for row in rows
+    ]
+
+
+def _detail(bridge: Bridge, db: Session | None = None) -> dict:
     item = _list_item(bridge)
     explained = derive(record_from_bridge(bridge))
     item.update(
@@ -162,6 +186,8 @@ def _detail(bridge: Bridge) -> dict:
             "why": publicize_text(explained.get("why") or bridge.why),
         }
     )
+    history = _history_rows(db, bridge) if db is not None else []
+    item.update(file_blocks(bridge, history))
     return item
 
 
@@ -767,7 +793,7 @@ def create_app() -> Flask:
             )
             if bridge is None:
                 abort(404)
-            return jsonify(_detail(bridge))
+            return jsonify(_detail(bridge, db))
         finally:
             db.close()
 

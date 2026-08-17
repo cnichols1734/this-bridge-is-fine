@@ -503,3 +503,54 @@ def explain_bridge(bridge: Any, today=None) -> dict[str, Any]:
     from backend.scoring import derive, record_from_bridge
 
     return derive(record_from_bridge(bridge), today=today)
+
+
+def structure_intro(
+    phrase: str | None,
+    maintainer: str | None = None,
+    owner: str | None = None,
+) -> str | None:
+    who = maintainer or owner
+    if phrase and who:
+        return f"This is a {phrase}. Maintenance is reported as {who}."
+    if phrase:
+        return f"This is a {phrase}."
+    if who:
+        return f"Maintenance is reported as {who}."
+    return None
+
+
+def dimensions_note(deck_area_label: str | None) -> str | None:
+    if not deck_area_label:
+        return None
+    return (
+        "Span dimensions affect structural design and load distribution. "
+        f"The deck area of {deck_area_label} is the reported surface to maintain."
+    )
+
+
+def load_ratings_paragraph(
+    operating_label: str | None,
+    inventory_label: str | None,
+    operating_tons: float | None = None,
+    posted: bool = False,
+) -> str | None:
+    bits: list[str] = []
+    if operating_label:
+        bits.append(
+            f"The operating rating of {operating_label} is the reported maximum load "
+            "under controlled conditions with special permits."
+        )
+    if inventory_label:
+        bits.append(
+            f"The inventory rating of {inventory_label} is the reported load level "
+            "for everyday traffic without extra restrictions."
+        )
+    if operating_tons is not None and operating_tons < 20:
+        bits.append(
+            "These relatively low ratings may result in posted weight limits "
+            "or route restrictions for heavy vehicles."
+        )
+    if posted:
+        bits.append("This record already shows a load posting.")
+    return " ".join(bits) or None

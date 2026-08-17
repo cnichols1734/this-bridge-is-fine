@@ -11,7 +11,7 @@ import {
   shouldAcceptFix,
   startPreciseWatch,
 } from "./geo.js";
-import { ApproachCard, DriveButton, LocateButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
+import { ApproachCard, LocateButton, NavBanner, WorstOnDrive } from "./NavOverlay.jsx";
 import {
   CHICAGO,
   CONDITION_FILTERS,
@@ -31,9 +31,11 @@ import {
   pickApproachingBridge,
   pickWorstOnDrive,
   pointAlongRoute,
+  dockJob,
   readConditionFilter,
   readPermalink,
   routeHeadingAt,
+  shellMode,
   viewIsAway,
   writeConditionFilter,
   writePermalink,
@@ -185,6 +187,7 @@ export default function App() {
     }
   });
   const [visibleConditions, setVisibleConditions] = useState(readConditionFilter);
+  const [listMode, setListMode] = useState("nearby");
   const [tripOpen, setTripOpen] = useState(false);
   const [tripStart, setTripStart] = useState(null);
   const [tripEnd, setTripEnd] = useState(null);
@@ -304,7 +307,7 @@ export default function App() {
   const select = useCallback(
     async (id) => {
       setSelectedId(id);
-      setSheet("half");
+      setSheet("full");
       if (navigatingRef.current) setFollowOn(false);
       const preview =
         list.find((bridge) => bridge.id === id) ||
@@ -326,7 +329,7 @@ export default function App() {
       try {
         const bridge = await fetchBridge(id);
         setDetail(bridge);
-        padMap("half", bridge);
+        padMap("full", bridge);
       } catch (err) {
         setError(err.message);
       }
@@ -504,7 +507,7 @@ export default function App() {
     setDropMode(false);
     setDropEditing(null);
     setTripOpen(true);
-    setSheet("peek");
+    setSheet("half");
   }, [applyFix, beginWatch, flyHome, lastPlace, locationNote, mapCenterStart]);
 
   const confirmTrip = useCallback(() => {
@@ -727,6 +730,40 @@ export default function App() {
   const searchNear = userLocation || center;
   const preciseHere = navFix || userLocation;
 
+  const mode = shellMode({ detail, tripOpen, listMode });
+  const job = dockJob({ detail, tripOpen, sheet });
+
+  const closeFileKeepSheet = () => {
+    setSelectedId(null);
+    setDetail(null);
+    const map = mapRef.current;
+    if (map) {
+      writePermalink({
+        lat: map.getCenter().lat,
+        lng: map.getCenter().lng,
+        z: map.getZoom(),
+        id: null,
+      });
+    }
+  };
+
+  const goMap = () => {
+    if (detail) closeDetail();
+    else setSheet("peek");
+  };
+
+  const goBridges = () => {
+    if (detail) closeFileKeepSheet();
+    if (tripOpen) clearTrip();
+    setSheet("half");
+  };
+
+  const goDriveTab = () => {
+    if (detail) closeFileKeepSheet();
+    if (!tripOpen) openDrive();
+    else setSheet("half");
+  };
+
   const tripComposer = tripOpen ? (
     <TripBar
       start={tripStart}
@@ -778,84 +815,135 @@ export default function App() {
     <div
       className={`app sheet-${sheet}${detail ? " has-place" : ""}${tripOpen ? " has-trip" : ""}${navigating ? " has-nav" : ""}`}
     >
-      <aside className="col col-left">
-        <header className="brand">
-          <div className="wordmark">This Bridge Is Fine</div>
-          <p className="tag">{COPY.tagline}</p>
-          {tripOpen ? (
-            tripComposer
-          ) : (
-            <>
-              <SearchBox
-                onPick={goToPlace}
-                near={searchNear}
-                onFocus={() => refreshPrecise()}
-              />
-              <div className="brand-actions">
-                <LocateButton labeled busy={locating} onClick={locate} />
-                <DriveButton onClick={openDrive} />
-              </div>
-            </>
-          )}
-        </header>
-        {error ? <div className="error">{error}</div> : null}
-        {tripError ? <div className="error">{tripError}</div> : null}
-        {hint && !tripOpen ? <div className="hint">{hint}</div> : null}
-        {trip && tripPayload ? (
-          <TripPulse
-            payload={tripPayload}
-            confirmed
-            onOpen={() => {}}
-            worst={tripWorst}
-            selectedId={selectedId}
-            onSelect={select}
-          />
-        ) : tripDraft ? (
-          <TripPulse
-            payload={tripDraft}
-            confirmed={false}
-            onConfirm={confirmTrip}
-            onOpen={() => {}}
-            worst={tripWorst}
-            selectedId={selectedId}
-            onSelect={select}
-          />
-        ) : null}
-        <div className="section-head">
-          <div className="section-label">
-            {routeOnMap ? COPY.driveBridges : COPY.nearest}
-          </div>
-        </div>
-        <div className="list">
-          {routeOnMap ? (
-            tripList.length === 0 ? (
-              <div className="empty">{COPY.driveEmpty}</div>
-            ) : (
-              tripList.map((bridge) => (
-                <Row
-                  key={bridge.id}
-                  bridge={bridge}
-                  selected={bridge.id === selectedId}
-                  onSelect={select}
-                  trip
-                />
-              ))
-            )
-          ) : list.length === 0 && !hint ? (
-            <div className="empty">{COPY.zoomHint}</div>
-          ) : list.length === 0 ? null : shownList.length === 0 ? (
-            <div className="empty">{COPY.emptyFilter}</div>
-          ) : (
-            shownList.map((bridge) => (
-              <Row
-                key={bridge.id}
-                bridge={bridge}
-                selected={bridge.id === selectedId}
+      <aside className="col col-rail">
+        {mode === "file" ? (
+          <Detail bridge={detail} onClose={closeDetail} snapshot={meta?.snapshot} />
+        ) : (
+          <>
+            <header className="brand">
+              <div className="wordmark">This Bridge Is Fine</div>
+              <p className="tag">{COPY.tagline}</p>
+              {mode === "drive" ? (
+                tripComposer
+              ) : (
+                <>
+                  <SearchBox
+                    onPick={goToPlace}
+                    near={searchNear}
+                    onFocus={() => refreshPrecise()}
+                  />
+                  <div className="seg" role="tablist" aria-label="Browse">
+                    <button
+                      type="button"
+                      className={mode === "nearby" ? "is-on" : ""}
+                      aria-selected={mode === "nearby"}
+                      onClick={() => {
+                        if (tripOpen) clearTrip();
+                        setListMode("nearby");
+                      }}
+                    >
+                      {COPY.nearby}
+                    </button>
+                    <button
+                      type="button"
+                      className={mode === "lowest" ? "is-on" : ""}
+                      aria-selected={mode === "lowest"}
+                      onClick={() => {
+                        if (tripOpen) clearTrip();
+                        setListMode("lowest");
+                      }}
+                    >
+                      {COPY.lowest}
+                    </button>
+                    <button
+                      type="button"
+                      className={mode === "drive" ? "is-on" : ""}
+                      aria-selected={mode === "drive"}
+                      onClick={openDrive}
+                    >
+                      {COPY.driveTab}
+                    </button>
+                  </div>
+                </>
+              )}
+            </header>
+            {error ? <div className="error">{error}</div> : null}
+            {tripError ? <div className="error">{tripError}</div> : null}
+            {hint && mode === "nearby" ? <div className="hint">{hint}</div> : null}
+            {mode === "drive" && tripPayload ? (
+              <TripPulse
+                payload={tripPayload}
+                confirmed={Boolean(trip)}
+                onConfirm={confirmTrip}
+                onOpen={() => {}}
+                worst={tripWorst}
+                selectedId={selectedId}
                 onSelect={select}
               />
-            ))
-          )}
-        </div>
+            ) : mode !== "drive" ? (
+              <div className="pulse">
+                <div className="pulse-label">{COPY.pulseLabel}</div>
+                <div className="pulse-number">{pulseNumber}</div>
+                <p className="pulse-copy">{pulseCopy}</p>
+              </div>
+            ) : null}
+            <div className="section-head">
+              <div className="section-label">
+                {mode === "drive"
+                  ? COPY.driveBridges
+                  : mode === "lowest"
+                    ? COPY.lowestScores
+                    : COPY.nearest}
+              </div>
+              {mode === "lowest" ? <RankNote /> : null}
+            </div>
+            <div className="list">
+              {mode === "drive" ? (
+                tripList.length === 0 ? (
+                  <div className="empty">{COPY.driveEmpty}</div>
+                ) : (
+                  tripList.map((bridge) => (
+                    <Row
+                      key={bridge.id}
+                      bridge={bridge}
+                      selected={bridge.id === selectedId}
+                      onSelect={select}
+                      trip
+                      showScore
+                    />
+                  ))
+                )
+              ) : mode === "lowest" ? (
+                shownWorst.length === 0 ? (
+                  <div className="empty">{COPY.emptyWorst}</div>
+                ) : (
+                  shownWorst.map((bridge) => (
+                    <Row
+                      key={bridge.id}
+                      bridge={bridge}
+                      selected={bridge.id === selectedId}
+                      onSelect={select}
+                      showScore
+                    />
+                  ))
+                )
+              ) : list.length === 0 && !hint ? (
+                <div className="empty">{COPY.zoomHint}</div>
+              ) : list.length === 0 ? null : shownList.length === 0 ? (
+                <div className="empty">{COPY.emptyFilter}</div>
+              ) : (
+                shownList.map((bridge) => (
+                  <Row
+                    key={bridge.id}
+                    bridge={bridge}
+                    selected={bridge.id === selectedId}
+                    onSelect={select}
+                  />
+                ))
+              )}
+            </div>
+          </>
+        )}
       </aside>
 
       <main className="col col-map">
@@ -888,21 +976,11 @@ export default function App() {
           {navigating ? (
             <NavBanner banner={banner} note={navNote} onExit={clearTrip} />
           ) : (
-            <>
-              <div className="map-brand-row">
-                <div className="map-brand">This Bridge Is Fine</div>
-                {tripOpen ? null : <DriveButton className="map-drive" onClick={openDrive} />}
-              </div>
-              {tripOpen ? (
-                tripComposer
-              ) : (
-                <SearchBox
-                  onPick={goToPlace}
-                  near={searchNear}
-                  onFocus={() => refreshPrecise()}
-                />
-              )}
-            </>
+            <SearchBox
+              onPick={goToPlace}
+              near={searchNear}
+              onFocus={() => refreshPrecise()}
+            />
           )}
         </div>
         {navigating && approach ? (
@@ -950,11 +1028,6 @@ export default function App() {
             {locateNote}
           </p>
         ) : null}
-        {detail && selectedId ? (
-          <div className="map-popup" role="dialog" aria-label="Bridge file">
-            <Detail bridge={detail} onClose={closeDetail} snapshot={meta?.snapshot} />
-          </div>
-        ) : null}
         <div className="map-dock">
           <div className="basemap" role="group" aria-label="Map type">
             <button
@@ -996,71 +1069,6 @@ export default function App() {
         {stale ? <div className="banner">{stale}</div> : null}
       </main>
 
-      <aside className="col col-right">
-        {trip && tripPayload ? (
-          <TripPulse
-            payload={tripPayload}
-            confirmed
-            onOpen={() => {}}
-            worst={tripWorst}
-            selectedId={selectedId}
-            onSelect={select}
-          />
-        ) : tripDraft ? (
-          <TripPulse
-            payload={tripDraft}
-            confirmed={false}
-            onConfirm={confirmTrip}
-            onOpen={() => {}}
-            worst={tripWorst}
-            selectedId={selectedId}
-            onSelect={select}
-          />
-        ) : (
-          <div className="pulse">
-            <div className="pulse-label">{COPY.pulseLabel}</div>
-            <div className="pulse-number">{pulseNumber}</div>
-            <p className="pulse-copy">{pulseCopy}</p>
-          </div>
-        )}
-        <div className="section-head">
-          <div className="section-label">
-            {routeOnMap ? COPY.driveBridges : COPY.lowestScores}
-          </div>
-          {routeOnMap ? null : <RankNote />}
-        </div>
-        <div className="list">
-          {routeOnMap ? (
-            tripList.length === 0 ? (
-              <div className="empty">{COPY.driveEmpty}</div>
-            ) : (
-              tripList.map((bridge) => (
-                <Row
-                  key={bridge.id}
-                  bridge={bridge}
-                  selected={bridge.id === selectedId}
-                  onSelect={select}
-                  trip
-                  showScore
-                />
-              ))
-            )
-          ) : shownWorst.length === 0 ? (
-            <div className="empty">{COPY.emptyWorst}</div>
-          ) : (
-            shownWorst.map((bridge) => (
-              <Row
-                key={bridge.id}
-                bridge={bridge}
-                selected={bridge.id === selectedId}
-                onSelect={select}
-                showScore
-              />
-            ))
-          )}
-        </div>
-      </aside>
-
       <Sheet
         detent={sheet}
         roomy={roomySheet}
@@ -1072,11 +1080,27 @@ export default function App() {
       >
         {detail ? (
           <>
-            <Detail bridge={detail} onClose={closeDetail} snapshot={meta?.snapshot} />
+            <Detail
+              bridge={detail}
+              onClose={closeDetail}
+              snapshot={meta?.snapshot}
+              jump
+            />
             <p className="sheet-legal">{COPY.poorDefinition}</p>
+          </>
+        ) : tripOpen && (tripError || tripBusy || fixingStart) && !tripPayload ? (
+          <>
+            {sheet !== "peek" ? tripComposer : null}
+            <div className="sheet-pulse sheet-drag trip-pulse trip-status">
+              <div className="pulse-label">{COPY.drive}</div>
+              <p className={`pulse-copy${tripError ? " trip-error" : ""}`}>
+                {tripError || (fixingStart ? COPY.driveLocating : COPY.driveLooking)}
+              </p>
+            </div>
           </>
         ) : tripPayload ? (
           <>
+            {sheet !== "peek" ? tripComposer : null}
             <TripPulse
               payload={tripPayload}
               confirmed={Boolean(trip)}
@@ -1109,13 +1133,6 @@ export default function App() {
               </>
             ) : null}
           </>
-        ) : tripOpen && (tripError || tripBusy || fixingStart) ? (
-          <div className="sheet-pulse sheet-drag trip-pulse trip-status">
-            <div className="pulse-label">{COPY.drive}</div>
-            <p className={`pulse-copy${tripError ? " trip-error" : ""}`}>
-              {tripError || (fixingStart ? COPY.driveLocating : COPY.driveLooking)}
-            </p>
-          </div>
         ) : (
           <>
             <div className="sheet-pulse sheet-drag" onClick={() => setSheet("half")}>
@@ -1125,21 +1142,54 @@ export default function App() {
             </div>
             {sheet !== "peek" ? (
               <>
+                <div className="seg sheet-seg" role="tablist" aria-label="Browse">
+                  <button
+                    type="button"
+                    className={listMode === "nearby" ? "is-on" : ""}
+                    onClick={() => setListMode("nearby")}
+                  >
+                    {COPY.nearby}
+                  </button>
+                  <button
+                    type="button"
+                    className={listMode === "lowest" ? "is-on" : ""}
+                    onClick={() => setListMode("lowest")}
+                  >
+                    {COPY.lowest}
+                  </button>
+                </div>
                 <div className="section-head">
-                  <div className="section-label">{COPY.lowestScores}</div>
-                  <RankNote />
+                  <div className="section-label">
+                    {listMode === "lowest" ? COPY.lowestScores : COPY.nearest}
+                  </div>
+                  {listMode === "lowest" ? <RankNote /> : null}
                 </div>
                 <div className="list">
-                  {shownWorst.length === 0 ? (
-                    <div className="empty">{COPY.emptyWorst}</div>
+                  {listMode === "lowest" ? (
+                    shownWorst.length === 0 ? (
+                      <div className="empty">{COPY.emptyWorst}</div>
+                    ) : (
+                      shownWorst.map((bridge) => (
+                        <Row
+                          key={bridge.id}
+                          bridge={bridge}
+                          selected={bridge.id === selectedId}
+                          onSelect={select}
+                          showScore
+                        />
+                      ))
+                    )
+                  ) : list.length === 0 && !hint ? (
+                    <div className="empty">{COPY.zoomHint}</div>
+                  ) : shownList.length === 0 ? (
+                    <div className="empty">{COPY.emptyFilter}</div>
                   ) : (
-                    shownWorst.map((bridge) => (
+                    shownList.map((bridge) => (
                       <Row
                         key={bridge.id}
                         bridge={bridge}
                         selected={bridge.id === selectedId}
                         onSelect={select}
-                        showScore
                       />
                     ))
                   )}
@@ -1149,6 +1199,33 @@ export default function App() {
           </>
         )}
       </Sheet>
+
+      <nav className="dock" aria-label="Primary">
+        <button
+          type="button"
+          className={job === "map" ? "is-on" : ""}
+          aria-current={job === "map" ? "page" : undefined}
+          onClick={goMap}
+        >
+          {COPY.mapTab}
+        </button>
+        <button
+          type="button"
+          className={job === "bridges" ? "is-on" : ""}
+          aria-current={job === "bridges" ? "page" : undefined}
+          onClick={goBridges}
+        >
+          {COPY.bridgesTab}
+        </button>
+        <button
+          type="button"
+          className={job === "drive" ? "is-on" : ""}
+          aria-current={job === "drive" ? "page" : undefined}
+          onClick={goDriveTab}
+        >
+          {COPY.driveTab}
+        </button>
+      </nav>
 
       <footer className="disclaimer">
         FHWA National Bridge Inventory via BTS NTAD

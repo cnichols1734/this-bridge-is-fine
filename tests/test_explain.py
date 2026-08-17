@@ -1,6 +1,13 @@
 from datetime import date
 
-from backend.explain import METHODOLOGY, rating_plain, scour_plain, status_plain
+from backend.explain import (
+    METHODOLOGY,
+    load_ratings_paragraph,
+    rating_plain,
+    scour_plain,
+    status_plain,
+    structure_intro,
+)
 from backend.scoring import derive
 
 TODAY = date(2026, 8, 16)
@@ -118,3 +125,12 @@ def test_traffic_copy_separates_exposure_from_condition():
     derived = derive(SEAWOLF, today=TODAY)
     traffic = next(row for row in derived["explanations"] if row["key"] == "traffic")
     assert "does not change the inspector's condition rating" in traffic["plain"]
+
+
+def test_structure_intro_and_load_copy_stay_dry():
+    assert "steel movable" in structure_intro("steel movable — bascule", "Local Toll Authority")
+    paragraph = load_ratings_paragraph("3.5 tons", "2.9 tons", 3.5, posted=True)
+    assert "3.5 tons" in paragraph
+    assert "2.9 tons" in paragraph
+    assert "safe" not in paragraph.lower()
+    assert "load posting" in paragraph

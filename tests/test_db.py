@@ -76,6 +76,40 @@ def test_ensure_ingest_columns_skips_alter_when_present():
     assert all("ALTER TABLE" not in sql.upper() for sql in executed)
 
 
+def test_ensure_bridge_columns_skips_alter_when_present():
+    executed = []
+
+    class Catalog:
+        def execute(self, statement, params=None):
+            executed.append(str(statement))
+            return type("R", (), {"scalar": staticmethod(lambda: 1)})()
+
+    db_mod.ensure_bridge_columns(Catalog())
+    assert executed
+    assert all("ALTER TABLE" not in sql.upper() for sql in executed)
+
+
+def test_ensure_bridge_columns_adds_missing_length():
+    executed = []
+
+    class Catalog:
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            executed.append(sql)
+            params = params or {}
+            if "to_regclass" in sql:
+                return type("R", (), {"scalar": staticmethod(lambda: True)})()
+            if "information_schema.columns" in sql:
+                present = params.get("column") != "structure_length_m"
+                return type("R", (), {"scalar": staticmethod(lambda: 1 if present else None)})()
+            return type("R", (), {"scalar": staticmethod(lambda: None)})()
+
+    db_mod.ensure_bridge_columns(Catalog())
+    alters = [sql for sql in executed if "ALTER TABLE" in sql.upper()]
+    assert len(alters) == 1
+    assert "structure_length_m" in alters[0]
+
+
 def test_init_db_indexes_bridges_in_a_separate_transaction():
     source = inspect.getsource(db_mod.init_db)
     ingest_at = source.index("ensure_ingest_columns")
